@@ -25,10 +25,12 @@ export async function POST(req: NextRequest) {
     const userPrompt = buildStep1UserPrompt({ questionnaire, clientSnapshot, materials });
 
     const rawText = await callOpenRouter({
-      model: process.env.STEP1_MODEL || 'anthropic/claude-opus-4-5',
+      model: process.env.STEP1_MODEL || 'anthropic/claude-opus-4-6',
       systemPrompt: STEP1_SYSTEM,
       systemPromptCached: true,
-      maxTokens: 8192,
+      maxTokens: 16000,
+      thinking: { type: 'enabled', budget_tokens: 8000 },
+      providerOrder: ['Anthropic'],
       messages: [{ role: 'user', content: userPrompt }],
     });
 
