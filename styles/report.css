@@ -1,0 +1,146 @@
+/* Report-specific print styles */
+
+@media print {
+  /* Page setup */
+  @page {
+    size: A4 portrait;
+    margin: 25mm 20mm;
+  }
+
+  /* Hide interactive elements */
+  .no-print,
+  header,
+  nav,
+  aside,
+  .export-toolbar {
+    display: none !important;
+  }
+
+  /* Page breaks */
+  .page-break {
+    page-break-before: always;
+  }
+
+  /* Preserve colors in print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Tables */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th, td {
+    border: 1px solid #E2EDED;
+    padding: 8px;
+  }
+
+  th {
+    background-color: #022226 !important;
+    color: white !important;
+  }
+
+  tr:nth-child(even) {
+    background-color: #F8FAFA !important;
+  }
+
+  /* Badges */
+  .fact-badge {
+    background-color: #E0F2F1 !important;
+    color: #065F46 !important;
+  }
+
+  .hypothesis-badge {
+    background-color: #FEF3C7 !important;
+    color: #92400E !important;
+  }
+
+  .untracked-badge {
+    background-color: #FEE2E2 !important;
+    color: #991B1B !important;
+  }
+
+  /* Typography */
+  body {
+    font-family: 'Inter', sans-serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #1A2E2E;
+  }
+
+  h1 { font-size: 20pt; }
+  h2 { font-size: 14pt; }
+  h3 { font-size: 11pt; }
+
+  /* Chapter blocks — no border radius in print */
+  .chapter-block {
+    border-radius: 0 !important;
+    border: 1px solid #E2EDED !important;
+    margin-bottom: 20px;
+  }
+
+  /* Avoid orphaned headings */
+  h2, h3 {
+    page-break-after: avoid;
+  }
+
+  /* Keep tables together */
+  table {
+    page-break-inside: avoid;
+  }
+}
+
+/* Screen: report-specific enhancements */
+.report-body .prose table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+.report-body .prose th {
+  background-color: var(--accent-deepest);
+  color: white;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.report-body .prose td {
+  border: 1px solid var(--border-brand);
+  padding: 8px 12px;
+}
+
+.report-body .prose tr:nth-child(even) td {
+  background-color: var(--surface);
+}
+
+/* Fixed blocks styling */
+.fixed-block {
+  border-left: 3px solid;
+  padding: 12px 16px;
+  margin: 12px 0;
+  border-radius: 0 8px 8px 0;
+}
+
+.fixed-block-implications {
+  border-color: var(--accent-primary);
+  background-color: var(--fact-badge);
+}
+
+.fixed-block-decisions {
+  border-color: var(--accent-dark);
+  background-color: #F0FDFA;
+}
+
+.fixed-block-breakpoints {
+  border-color: #F59E0B;
+  background-color: #FFFBEB;
+}
+
+.fixed-block-tests {
+  border-color: #22C55E;
+  background-color: #F0FDF4;
+}
