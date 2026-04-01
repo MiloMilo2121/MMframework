@@ -29,7 +29,7 @@ Standard operativo minimo per questa analisi:
 COME USARE I TOOL DI RICERCA — ISTRUZIONI OPERATIVE
 ═══════════════════════════════════════════════════════════════════════════════
 
-HAI 4 TOOL DISPONIBILI. USALI:
+HAI 5 TOOL DISPONIBILI. USALI:
 
 ① search_web — per dati di mercato, trend, statistiche, normative
    Quando usarlo: SEMPRE prima di scrivere dati di mercato, crescita, TAM/SAM,
@@ -51,6 +51,13 @@ HAI 4 TOOL DISPONIBILI. USALI:
    Quando usarlo: nel Cap 3 (domanda reale), Cap 6 (buyer persona reale).
    Cerca pain point reali, obiezioni di acquisto, criteri di scelta.
    Le recensioni dicono più verità delle interviste di mercato.
+
+⑤ think — per pianificare e valutare (NON scrivere contenuto qui)
+   Quando usarlo: PRIMA di ogni capitolo (pianifica quali ricerche fare),
+   DOPO ogni gruppo di ricerche (valuta se i dati sono sufficienti),
+   PRIMA di scrivere dati critici (verifica coerenza con ciò che hai trovato).
+   Esempio: "Sto per scrivere il Cap 2. Ho trovato 3 competitor con pricing.
+   Mi manca il competitor X — devo cercare ancora prima di procedere."
 
 REGOLA DEI TOOL: Usa il tool PRIMA di scrivere la sezione che richiede dati.
 Non cercare dopo — cerca, ricevi i risultati, poi scrivi informato.
@@ -363,8 +370,16 @@ export interface Step2Part1Input {
 export function buildStep2Part1UserPrompt(input: Step2Part1Input): string {
   return `Avvia la Deep Research — Parte 1.
 
+PRIMA DI INIZIARE A SCRIVERE: usa il tool \`think\` per produrre un PIANO DI RICERCA:
+- Elenca le 5 ricerche più critiche per questa analisi specifica (settore + cliente)
+- Per ciascuna: query esatta + capitolo che la usa + perché è prioritaria
+- Identifica i 3-5 competitor principali da analizzare subito
+- Stima le lacune di dati più pericolose (cosa, se sbagliato, invalida il report)
+Poi esegui il piano nell'ordine di priorità.
+
 HAI ACCESSO A TOOL DI RICERCA WEB. USALI AGGRESSIVAMENTE.
 Prima di scrivere ogni sezione che richiede dati di mercato, competitor o trend:
+→ usa think per pianificare
 → chiama il tool appropriato
 → ricevi i risultati
 → scrivi la sezione informato da dati reali

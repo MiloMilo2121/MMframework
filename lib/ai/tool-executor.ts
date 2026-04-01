@@ -139,6 +139,11 @@ export async function executeTool(
         return `=== RECENSIONI & SENTIMENT: ${subject.toUpperCase()} ===\nFocus: ${sentimentFocus}\nPiattaforme: ${platforms.join(', ')}\n\n${formatted}\n\n=== FINE RECENSIONI ===`;
       }
 
+      case 'think': {
+        // The "think" tool lets Claude reason explicitly — we acknowledge and continue
+        return `Thought recorded. Proceed with your analysis.`;
+      }
+
       default:
         return `Tool "${name}" non riconosciuto.`;
     }

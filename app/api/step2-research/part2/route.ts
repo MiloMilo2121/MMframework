@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
           part1Summary: body.part1Summary,
         });
 
-        const model = process.env.STEP2_MODEL || 'anthropic/claude-opus-4-5';
+        const model = process.env.STEP2_MODEL || 'anthropic/claude-opus-4-6';
 
         const messages: OpenAI.ChatCompletionMessageParam[] = [
           { role: 'user', content: userPrompt },

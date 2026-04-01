@@ -43,7 +43,7 @@ const config: Config = {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
-        // Axend brand
+        // Marco Milanello SC brand colors
         "accent-primary": "var(--accent-primary)",
         "accent-dark": "var(--accent-dark)",
         "accent-deepest": "var(--accent-deepest)",

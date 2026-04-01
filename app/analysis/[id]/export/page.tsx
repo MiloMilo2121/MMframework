@@ -124,7 +124,7 @@ export default function ExportPage() {
         className="fixed bottom-0 left-0 right-0 text-xs text-center py-2 border-t"
         style={{ color: '#5A7878', borderColor: '#E2EDED' }}
       >
-        Confidenziale — Analisi di Mercato elaborata da Axend — Non distribuire
+        Confidenziale — Analisi di Mercato elaborata da Marco Milanello Strategic Consultant — Non distribuire
       </div>
     </div>
   );

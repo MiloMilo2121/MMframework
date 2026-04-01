@@ -23,7 +23,7 @@ export function Header() {
             className="ml-2 text-xs py-0 h-4"
             style={{ borderColor: 'var(--accent-primary)', color: 'var(--accent-dark)' }}
           >
-            powered by Axend
+            powered by Marco Milanello SC
           </Badge>
         </div>
       </Link>

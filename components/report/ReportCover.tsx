@@ -23,7 +23,7 @@ export function ReportCover({ clientName, sector, geography, date, version = '1.
       {/* Top: Logo */}
       <div className="flex items-center justify-end gap-3">
         <div>
-          <p className="text-sm font-semibold text-right" style={{ color: 'var(--accent-deepest)' }}>Axend</p>
+          <p className="text-sm font-semibold text-right" style={{ color: 'var(--accent-deepest)' }}>Marco Milanello SC</p>
           <p className="text-xs text-right" style={{ color: 'var(--text-secondary)' }}>Strategic Intelligence</p>
         </div>
         <div
@@ -61,7 +61,7 @@ export function ReportCover({ clientName, sector, geography, date, version = '1.
             <p className="font-semibold uppercase tracking-wide text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
               Elaborato da
             </p>
-            <p style={{ color: 'var(--text-primary)' }}>Axend</p>
+            <p style={{ color: 'var(--text-primary)' }}>Marco Milanello Strategic Consultant</p>
           </div>
           <div>
             <p className="font-semibold uppercase tracking-wide text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
@@ -91,7 +91,7 @@ export function ReportCover({ clientName, sector, geography, date, version = '1.
       <div>
         <div className="w-full h-1 rounded-full" style={{ backgroundColor: 'var(--accent-primary)' }} />
         <p className="text-xs mt-3" style={{ color: 'var(--text-secondary)' }}>
-          Confidenziale — Analisi di Mercato elaborata da Axend — Non distribuire
+          Confidenziale — Analisi di Mercato elaborata da Marco Milanello Strategic Consultant — Non distribuire
         </p>
       </div>
     </div>

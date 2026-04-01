@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'SalesMap Intelligence — powered by Axend',
+  title: 'SalesMap Intelligence — powered by Marco Milanello SC',
   description: 'Analisi di mercato di livello consulenziale top-tier per PMI italiane',
 };
 

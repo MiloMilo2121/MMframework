@@ -2,6 +2,12 @@ import Exa from 'exa-js';
 
 let _exa: Exa | null = null;
 
+function getRecentDate(monthsAgo: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - monthsAgo);
+  return d.toISOString();
+}
+
 function getExa(): Exa {
   if (!_exa) {
     _exa = new Exa(process.env.EXA_API_KEY!);
@@ -64,6 +70,7 @@ export async function searchCompetitors(
       numResults: maxResults,
       text: { maxCharacters: 3000 },
       excludeDomains: ['reddit.com', 'quora.com', 'wikipedia.org'],
+      startPublishedDate: getRecentDate(18),
     });
 
     return (results.results || []).map((r) => ({

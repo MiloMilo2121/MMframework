@@ -65,7 +65,7 @@ export async function generatePdf(
     pdf.line(MARGIN, A4_H - 8, A4_W - MARGIN, A4_H - 8);
     pdf.setFontSize(6);
     pdf.text(
-      'Confidenziale — Analisi di Mercato elaborata da Axend — Non distribuire',
+      'Confidenziale — Analisi di Mercato elaborata da Marco Milanello Strategic Consultant — Non distribuire',
       A4_W / 2,
       A4_H - 5,
       { align: 'center' }
@@ -75,10 +75,10 @@ export async function generatePdf(
     pdf.setFontSize(60);
     pdf.setTextColor(200, 220, 220);
     pdf.setGState(pdf.GState({ opacity: 0.03 }));
-    pdf.text('AXEND', A4_W / 2, A4_H / 2, { align: 'center', angle: 45 });
+    pdf.text('MMSC', A4_W / 2, A4_H / 2, { align: 'center', angle: 45 });
     pdf.setGState(pdf.GState({ opacity: 1 }));
     pdf.setTextColor(0, 0, 0);
   }
 
-  pdf.save(`AnalisiMercato_${clientName.replace(/\s+/g, '_')}_Axend.pdf`);
+  pdf.save(`AnalisiMercato_${clientName.replace(/\s+/g, '_')}_MarcoMilanello.pdf`);
 }

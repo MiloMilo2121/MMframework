@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
           materials: body.materials,
         });
 
-        const model = process.env.STEP2_MODEL || 'anthropic/claude-opus-4-5';
+        const model = process.env.STEP2_MODEL || 'anthropic/claude-opus-4-6';
 
         // Build message history for the tool use loop
         const messages: OpenAI.ChatCompletionMessageParam[] = [

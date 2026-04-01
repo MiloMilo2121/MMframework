@@ -24,7 +24,7 @@ Usa questo tool ogni volta che hai bisogno di:
         properties: {
           query: {
             type: 'string',
-            description: 'Query di ricerca precisa e specifica. Includi sempre: settore + paese (es. "Italy") + anno. Esempio: "mercato software gestionale PMI Italia 2024 dimensione crescita" oppure "competitor analisi prezzi CRM B2B Italia"',
+            description: 'Query di ricerca precisa e specifica. Includi SEMPRE l\'anno 2025 nella query e privilegia fonti degli ultimi 12-24 mesi. Esempio BUONO: "mercato software gestionale PMI Italia 2025 valore crescita" oppure "competitor CRM B2B Italia 2025 prezzi posizionamento". Esempio CATTIVO: "software gestionale" (troppo generico, senza anno).',
           },
           search_type: {
             type: 'string',
@@ -45,7 +45,8 @@ Usa questo tool ogni volta che hai bisogno di:
     function: {
       name: 'search_competitors',
       description: `Analisi approfondita di un competitor specifico. Recupera: pricing visibile, messaggi commerciali, canali usati, posizionamento, recensioni, tecnologie, punti deboli.
-Usa questo tool per OGNI competitor rilevante identificato. Non fermarti a nominare competitor senza aver cercato dati concreti su di essi.`,
+Usa questo tool per OGNI competitor rilevante identificato. Non fermarti a nominare competitor senza aver cercato dati concreti su di essi.
+Aggiungi sempre l'anno 2025 nelle query. Privilegia fonti degli ultimi 12-24 mesi per avere dati attuali su pricing e posizionamento.`,
       parameters: {
         type: 'object',
         properties: {
@@ -128,9 +129,32 @@ Usa questo tool per OGNI competitor rilevante identificato. Non fermarti a nomin
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'think',
+      description: `Usa questo tool per ragionare esplicitamente PRIMA di fare una ricerca o PRIMA di scrivere una sezione critica.
+Aiuta a: pianificare quali ricerche fare, valutare risultati di tool calls precedenti, decidere se un capitolo è sufficientemente supportato da evidenze, identificare contraddizioni nei dati trovati.
+NON usarlo per scrivere contenuto del report — solo per ragionamento interno.
+Quando usarlo:
+- PRIMA di ogni capitolo: pianifica le 2-3 ricerche più critiche specifiche per quel capitolo
+- DOPO ogni gruppo di ricerche: valuta se i dati trovati sono sufficienti o servono altre ricerche
+- PRIMA di scrivere dati numerici critici: verifica coerenza con le fonti trovate`,
+      parameters: {
+        type: 'object',
+        properties: {
+          thought: {
+            type: 'string',
+            description: 'Il tuo ragionamento interno — pianificazione ricerche, valutazione evidenze, decisioni strategiche',
+          },
+        },
+        required: ['thought'],
+      },
+    },
+  },
 ];
 
-export type ToolName = 'search_web' | 'search_competitors' | 'get_page_content' | 'search_reviews_and_sentiment';
+export type ToolName = 'search_web' | 'search_competitors' | 'get_page_content' | 'search_reviews_and_sentiment' | 'think';
 
 export interface ToolCall {
   id: string;

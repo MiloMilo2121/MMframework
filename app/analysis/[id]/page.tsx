@@ -16,7 +16,7 @@ import { useAnalysisStore } from '@/lib/store/analysis-store';
 import { parseReport } from '@/lib/parsers/parse-report';
 import { marked } from 'marked';
 import { Button } from '@/components/ui/button';
-import { Download, Printer, Copy, FileJson } from 'lucide-react';
+import { Download, Printer, Copy, FileJson, Loader2 } from 'lucide-react';
 import type { ParsedReport } from '@/lib/types/report';
 
 export default function ReportPage() {
@@ -25,6 +25,7 @@ export default function ReportPage() {
   const { getById, setActive } = useAnalysisStore();
   const [report, setReport] = useState<ParsedReport | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const analysis = getById(params.id);
 
@@ -56,6 +57,31 @@ export default function ReportPage() {
       </div>
     );
   }
+
+  const handleDownloadPdf = async () => {
+    if (!analysis) return;
+    setPdfLoading(true);
+    try {
+      const res = await fetch('/api/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(analysis),
+      });
+      if (!res.ok) throw new Error('PDF generation failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `AnalisiMercato_${analysis.clientName.replace(/\s+/g, '_')}_MarcoMilanello.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback to legacy export page
+      router.push(`/analysis/${params.id}/export`);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   const handleCopyMarkdown = async () => {
     const text = [analysis.reportPart1, analysis.reportPart2, analysis.conclusions]
@@ -134,13 +160,17 @@ export default function ReportPage() {
               </Button>
               <Button
                 size="sm"
-                onClick={() => router.push(`/analysis/${params.id}/export`)}
-                disabled={!hasReport}
+                onClick={handleDownloadPdf}
+                disabled={!hasReport || pdfLoading}
                 className="gap-1 text-xs text-white"
                 style={{ backgroundColor: 'var(--accent-deepest)' }}
               >
-                <Download className="w-3 h-3" />
-                Scarica PDF
+                {pdfLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Download className="w-3 h-3" />
+                )}
+                {pdfLoading ? 'Generando...' : 'Scarica PDF'}
               </Button>
             </div>
           </div>
