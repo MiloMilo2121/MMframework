@@ -10,30 +10,76 @@ interface Phase {
   status: 'pending' | 'active' | 'complete' | 'error';
 }
 
+export interface WorkerStatus {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'complete' | 'error';
+  toolCalls?: number;
+}
+
 interface StreamingProgressProps {
   phases: Phase[];
   currentChapter?: string;
   log?: Array<{ ts: string; message: string; type?: string }>;
   estimatedSecondsLeft?: number;
+  workers?: WorkerStatus[];
 }
+
+const STATUS_COLOR = {
+  pending: '#D1D5DB',
+  active: 'var(--accent-primary)',
+  complete: '#22C55E',
+  error: '#EF4444',
+  running: 'var(--accent-primary)',
+};
+
+const WORKER_ICON = {
+  pending: '⏳',
+  running: '⚡',
+  complete: '✓',
+  error: '✗',
+};
 
 export function StreamingProgress({
   phases,
   currentChapter,
   log = [],
   estimatedSecondsLeft,
+  workers = [],
 }: StreamingProgressProps) {
-  const statusColor = (s: Phase['status']) => {
-    switch (s) {
-      case 'active': return 'var(--accent-primary)';
-      case 'complete': return '#22C55E';
-      case 'error': return '#EF4444';
-      default: return '#D1D5DB';
-    }
-  };
+  const statusColor = (s: Phase['status']) => STATUS_COLOR[s] || '#D1D5DB';
 
   return (
     <div className="space-y-4">
+      {/* Worker grid — shown when orchestrator is running */}
+      {workers.length > 0 && (
+        <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--border-brand)', backgroundColor: 'var(--surface)' }}>
+          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+            Worker attivi
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {workers.map((w) => (
+              <div
+                key={w.id}
+                className="flex items-center gap-2 text-xs rounded-md px-2 py-1.5"
+                style={{
+                  backgroundColor: w.status === 'complete' ? '#F0FDF4' : w.status === 'error' ? '#FEF2F2' : '#F8FAFA',
+                  color: w.status === 'complete' ? '#166534' : w.status === 'error' ? '#991B1B' : 'var(--text-primary)',
+                }}
+              >
+                <span className="text-sm leading-none">
+                  {WORKER_ICON[w.status]}
+                </span>
+                <span className="font-medium truncate">{w.label}</span>
+                {w.toolCalls !== undefined && w.toolCalls > 0 && (
+                  <span className="ml-auto opacity-60 shrink-0">{w.toolCalls}🔍</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Phase bars */}
       {phases.map((phase, i) => (
         <div key={i} className="space-y-1">

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StreamingText } from '@/components/streaming/StreamingText';
-import { StreamingProgress } from '@/components/streaming/StreamingProgress';
+import { StreamingProgress, type WorkerStatus } from '@/components/streaming/StreamingProgress';
 import { useAnalysisStore } from '@/lib/store/analysis-store';
 import type { HandoffOperativo } from '@/lib/types/handoff';
 
@@ -15,57 +15,95 @@ interface Props {
 
 type PhaseStatus = 'pending' | 'active' | 'complete' | 'error';
 
+const WORKER_LABELS: Record<string, string> = {
+  market_dynamics: 'Market Dynamics',
+  competitor_intelligence: 'Competitor War-Room',
+  product_tech: 'Product & Tech',
+  economics_pricing: 'Economics & Pricing',
+  swoc_synthesis: 'Challenger QA',
+};
+
 export function Step5Research({ analysisId }: Props) {
   const router = useRouter();
   const { getById, updateStatus, setReportPart1, setReportPart2, setConclusions, updateAnalysis } = useAnalysisStore();
   const analysis = getById(analysisId);
 
-  const [phase1Status, setPhase1Status] = useState<PhaseStatus>('active');
-  const [phase2Status, setPhase2Status] = useState<PhaseStatus>('pending');
-  const [phase1Progress, setPhase1Progress] = useState(0);
-  const [phase2Progress, setPhase2Progress] = useState(0);
-  const [currentChapter, setCurrentChapter] = useState('Avvio...');
+  const [orchestratorStatus, setOrchestratorStatus] = useState<PhaseStatus>('active');
+  const [orchestratorProgress, setOrchestratorProgress] = useState(0);
+  const [currentChapter, setCurrentChapter] = useState('Avvio Pentathlon...');
   const [log, setLog] = useState<Array<{ ts: string; message: string; type?: string }>>([]);
   const [isDone, setIsDone] = useState(false);
   const [isRunning, setIsRunning] = useState(true);
-  const [currentPhase, setCurrentPhase] = useState<1 | 2>(1);
-  const [phase1Text, setPhase1Text] = useState('');
-  const [phase2Active, setPhase2Active] = useState(false);
-  const contextBridgeRef = useRef('');
+  const [workers, setWorkers] = useState<WorkerStatus[]>([
+    { id: 'market_dynamics', label: 'Market Dynamics', status: 'pending' },
+    { id: 'competitor_intelligence', label: 'Competitor War-Room', status: 'pending' },
+    { id: 'product_tech', label: 'Product & Tech', status: 'pending' },
+    { id: 'economics_pricing', label: 'Economics & Pricing', status: 'pending' },
+    { id: 'swoc_synthesis', label: 'Challenger QA', status: 'pending' },
+  ]);
   const startTimeRef = useRef(Date.now());
 
   const addLog = useCallback((message: string, type?: string) => {
     const ts = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setLog((prev) => [...prev.slice(-50), { ts, message, type }]);
+    setLog((prev) => [...prev.slice(-60), { ts, message, type }]);
   }, []);
 
-  // Part 1 handlers
-  const handlePart1Chapter = useCallback((chapter: string) => {
+  const updateWorker = useCallback((workerId: string, update: Partial<WorkerStatus>) => {
+    setWorkers((prev) => prev.map((w) =>
+      w.id === workerId ? { ...w, ...update } : w
+    ));
+  }, []);
+
+  const handleChapter = useCallback((chapter: string) => {
     setCurrentChapter(chapter);
-    addLog(`${chapter}`);
+    addLog(`📄 ${chapter}`);
+    // Estimate progress based on chapter number
+    const match = chapter.match(/CAP\s+(\d+)/);
+    if (match) {
+      const capNum = parseInt(match[1], 10);
+      setOrchestratorProgress(Math.min(95, 40 + capNum * 4));
+    }
   }, [addLog]);
 
-  const handlePart1Status = useCallback((msg: string) => {
+  const handleStatus = useCallback((msg: string, data?: Record<string, unknown>) => {
     addLog(msg);
-  }, [addLog]);
 
-  const handlePart1Warning = useCallback((msg: string) => {
+    // Handle module_status events embedded in status
+    if (data?.workerId && typeof data.workerId === 'string') {
+      const wId = data.workerId as string;
+      const wStatus = data.status as WorkerStatus['status'];
+      updateWorker(wId, {
+        status: wStatus,
+        toolCalls: typeof data.toolCalls === 'number' ? data.toolCalls : undefined,
+      });
+    }
+  }, [addLog, updateWorker]);
+
+  const handleWarning = useCallback((msg: string) => {
     addLog(msg, 'warning');
   }, [addLog]);
 
-  const handlePart1Complete = useCallback(async (data: Record<string, unknown>) => {
+  const handleComplete = useCallback(async (data: Record<string, unknown>) => {
     const fullText = typeof data.fullText === 'string' ? data.fullText : '';
-    const contextBridge = typeof data.contextBridge === 'string' ? data.contextBridge : '';
+    const handoffOperativo = data.handoffOperativo as HandoffOperativo | null;
     const wordCount = typeof data.wordCount === 'number' ? data.wordCount : 0;
     const chaptersFound = typeof data.chaptersFound === 'number' ? data.chaptersFound : 0;
+    const workersCompleted = typeof data.workersCompleted === 'number' ? data.workersCompleted : 0;
+    const factsGathered = typeof data.factsGathered === 'number' ? data.factsGathered : 0;
+    const competitorsFound = typeof data.competitorsFound === 'number' ? data.competitorsFound : 0;
 
-    contextBridgeRef.current = contextBridge;
-    setPhase1Text(fullText);
-    setReportPart1(analysisId, fullText, contextBridge);
-    setPhase1Progress(100);
-    setPhase1Status('complete');
+    // Store as Part 1 + Part 2 (the full text goes into Part 1 for compatibility)
+    const midpoint = Math.floor(fullText.length / 2);
+    const part1 = fullText.slice(0, midpoint);
+    const part2 = fullText.slice(midpoint);
 
-    addLog(`Parte 1 completata — ${wordCount.toLocaleString()} parole, ${chaptersFound} capitoli`);
+    setReportPart1(analysisId, part1, '');
+    setReportPart2(analysisId, part2, handoffOperativo);
+    setOrchestratorProgress(100);
+    setOrchestratorStatus('complete');
+
+    addLog(`✅ Report completato — ${wordCount.toLocaleString()} parole, ${chaptersFound} capitoli`);
+    addLog(`📊 ${workersCompleted}/4 Worker | ${factsGathered} fatti | ${competitorsFound} competitor`);
 
     updateAnalysis(analysisId, {
       metadata: {
@@ -76,64 +114,25 @@ export function Step5Research({ analysisId }: Props) {
       },
     });
 
-    // Transition to Part 2
-    setCurrentPhase(2);
-    setPhase2Status('active');
-    setCurrentChapter('Avvio Parte 2...');
-    setPhase2Active(true);
-  }, [analysisId, setReportPart1, updateAnalysis, addLog]);
-
-  const handlePart1Error = useCallback((msg: string) => {
-    addLog(`Errore Parte 1: ${msg}`, 'error');
-    setPhase1Status('error');
-    updateStatus(analysisId, 'error', msg);
-    setIsRunning(false);
-  }, [addLog, analysisId, updateStatus]);
-
-  // Part 2 handlers
-  const handlePart2Chapter = useCallback((chapter: string) => {
-    setCurrentChapter(chapter);
-    addLog(chapter);
-  }, [addLog]);
-
-  const handlePart2Status = useCallback((msg: string) => {
-    addLog(msg);
-  }, [addLog]);
-
-  const handlePart2Warning = useCallback((msg: string) => {
-    addLog(msg, 'warning');
-  }, [addLog]);
-
-  const handlePart2Complete = useCallback(async (data: Record<string, unknown>) => {
-    const fullText = typeof data.fullText === 'string' ? data.fullText : '';
-    const handoffOperativo = data.handoffOperativo as HandoffOperativo | null;
-    const wordCount = typeof data.wordCount === 'number' ? data.wordCount : 0;
-
-    setReportPart2(analysisId, fullText, handoffOperativo);
-    setPhase2Progress(100);
-    setPhase2Status('complete');
-
-    addLog(`Parte 2 completata — ${wordCount.toLocaleString()} parole`);
-
     // Step 3: generate conclusions
-    addLog('Generazione conclusioni...');
-    const analysis = getById(analysisId);
+    addLog('⚡ Generazione conclusioni...');
+    const currentAnalysis = getById(analysisId);
     try {
       const res = await fetch('/api/step3-conclusions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clientName: analysis?.clientName || '',
-          sector: analysis?.sector || '',
-          reportPart1: analysis?.reportPart1?.slice(0, 4000) || '',
-          reportPart2: fullText.slice(0, 4000),
+          clientName: currentAnalysis?.clientName || '',
+          sector: currentAnalysis?.sector || '',
+          reportPart1: part1.slice(0, 4000),
+          reportPart2: part2.slice(0, 4000),
           handoffOperativo: handoffOperativo ? JSON.stringify(handoffOperativo).slice(0, 2000) : '',
         }),
       });
       if (res.ok) {
         const { conclusions } = (await res.json()) as { conclusions: string };
         setConclusions(analysisId, conclusions);
-        addLog('Conclusioni generate.');
+        addLog('✅ Conclusioni generate.');
       }
     } catch (err) {
       addLog(`Errore conclusioni: ${err instanceof Error ? err.message : 'unknown'}`, 'warning');
@@ -142,37 +141,52 @@ export function Step5Research({ analysisId }: Props) {
     setIsDone(true);
     setIsRunning(false);
     updateStatus(analysisId, 'complete');
-  }, [analysisId, setReportPart2, setConclusions, updateStatus, addLog, getById]);
+  }, [analysisId, setReportPart1, setReportPart2, setConclusions, updateStatus, updateAnalysis, addLog, getById]);
 
-  const handlePart2Error = useCallback((msg: string) => {
-    addLog(`Errore Parte 2: ${msg}`, 'error');
-    setPhase2Status('error');
+  const handleError = useCallback((msg: string) => {
+    addLog(`Errore: ${msg}`, 'error');
+    setOrchestratorStatus('error');
     updateStatus(analysisId, 'error', msg);
     setIsRunning(false);
   }, [addLog, analysisId, updateStatus]);
 
-  const part1Body = {
+  // Custom SSE handler to intercept module_status events
+  const handleRawEvent = useCallback((eventType: string, data: Record<string, unknown>) => {
+    if (eventType === 'module_status') {
+      const wId = String(data.workerId || '');
+      const wStatus = data.status as WorkerStatus['status'];
+      if (wId && wStatus) {
+        updateWorker(wId, {
+          status: wStatus,
+          toolCalls: typeof data.toolCalls === 'number' ? data.toolCalls : undefined,
+        });
+        const label = WORKER_LABELS[wId] || wId;
+        if (wStatus === 'complete') addLog(`✓ ${label} — ${data.toolCalls || 0} ricerche`);
+        if (wStatus === 'running') addLog(`⚡ ${label} avviato`);
+        if (wStatus === 'error') addLog(`✗ ${label}: ${data.message || 'errore'}`, 'error');
+      }
+      // Update progress during workers phase
+      const completedCount = workers.filter((w) => w.status === 'complete').length;
+      setOrchestratorProgress(Math.min(35, completedCount * 7));
+    }
+  }, [updateWorker, addLog, workers]);
+
+  const orchestratorBody = {
     clientSnapshot: JSON.stringify(analysis?.clientSnapshot || {}),
     handoffData1: JSON.stringify(analysis?.handoffData1 || {}),
-  };
-
-  const part2Body = {
-    contextBridge: contextBridgeRef.current,
-    handoffData1: JSON.stringify(analysis?.handoffData1 || {}),
-    part1Summary: phase1Text.slice(0, 5000),
+    questionnaire: analysis?.questionnaire,
+    analysisId,
   };
 
   const elapsedMs = Date.now() - startTimeRef.current;
-  const estimatedLeft = currentPhase === 1
-    ? Math.max(0, 480000 - elapsedMs) / 1000
-    : Math.max(0, 360000 - elapsedMs) / 1000;
+  const estimatedLeft = Math.max(0, 240000 - elapsedMs) / 1000;
 
   return (
     <div className="space-y-4 max-w-3xl w-full">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: 'var(--accent-deepest)' }}>
-            Deep Research
+            Deep Research — Pentathlon
           </h2>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {analysis?.clientName} • {analysis?.sector}
@@ -192,21 +206,16 @@ export function Step5Research({ analysisId }: Props) {
       <StreamingProgress
         phases={[
           {
-            label: 'Executive Summary + Capitoli 1-7',
-            description: 'Analisi di mercato, competitor, domanda, pricing, canali, buyer persona',
-            progress: phase1Progress,
-            status: phase1Status,
-          },
-          {
-            label: 'Capitoli 8-14 + Roadmap + HANDOFF',
-            description: 'Leve comm., SWOT, piano operativo, roadmap 30/60/90',
-            progress: phase2Progress,
-            status: phase2Status,
+            label: 'Analisi Multi-Modello (5 Worker + CoherenceGate)',
+            description: '5 specialisti in parallelo + editor strategico',
+            progress: orchestratorProgress,
+            status: orchestratorStatus,
           },
         ]}
         currentChapter={currentChapter}
         log={log}
         estimatedSecondsLeft={estimatedLeft}
+        workers={workers}
       />
 
       {/* Streaming viewer */}
@@ -214,34 +223,17 @@ export function Step5Research({ analysisId }: Props) {
         className="rounded-xl overflow-hidden border"
         style={{ height: 400, borderColor: '#30363d' }}
       >
-        {currentPhase === 1 && (
-          <StreamingText
-            url="/api/step2-research/part1"
-            body={part1Body}
-            onChapter={handlePart1Chapter}
-            onComplete={handlePart1Complete}
-            onError={handlePart1Error}
-            onStatus={handlePart1Status}
-            onWarning={handlePart1Warning}
-            autoStart={true}
-          />
-        )}
-        {currentPhase === 2 && (
-          <StreamingText
-            url="/api/step2-research/part2"
-            body={{
-              ...part2Body,
-              contextBridge: contextBridgeRef.current,
-              part1Summary: phase1Text.slice(0, 5000),
-            }}
-            onChapter={handlePart2Chapter}
-            onComplete={handlePart2Complete}
-            onError={handlePart2Error}
-            onStatus={handlePart2Status}
-            onWarning={handlePart2Warning}
-            autoStart={phase2Active}
-          />
-        )}
+        <StreamingText
+          url="/api/step2-research/orchestrator"
+          body={orchestratorBody}
+          onChapter={handleChapter}
+          onComplete={handleComplete}
+          onError={handleError}
+          onStatus={handleStatus}
+          onWarning={handleWarning}
+          onRawEvent={handleRawEvent}
+          autoStart={true}
+        />
       </div>
 
       {isDone && (

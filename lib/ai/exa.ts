@@ -1,4 +1,5 @@
 import Exa from 'exa-js';
+import { getCached, setCached } from './exa-cache';
 
 let _exa: Exa | null = null;
 
@@ -64,6 +65,9 @@ export async function searchCompetitors(
 ): Promise<ExaResult[]> {
   const exa = getExa();
 
+  const cached = getCached(query, maxResults);
+  if (cached) return cached;
+
   try {
     const results = await exa.searchAndContents(query, {
       type: 'neural',
@@ -73,12 +77,15 @@ export async function searchCompetitors(
       startPublishedDate: getRecentDate(18),
     });
 
-    return (results.results || []).map((r) => ({
+    const mapped = (results.results || []).map((r) => ({
       url: r.url,
       title: r.title || '',
       text: r.text || '',
       publishedDate: r.publishedDate,
     }));
+
+    setCached(query, maxResults, mapped);
+    return mapped;
   } catch (err) {
     console.error('[Exa] searchCompetitors error:', err);
     return [];

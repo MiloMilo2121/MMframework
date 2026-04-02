@@ -8,8 +8,9 @@ interface StreamingTextProps {
   onChapter?: (chapter: string) => void;
   onComplete?: (data: Record<string, unknown>) => void;
   onError?: (message: string) => void;
-  onStatus?: (message: string) => void;
+  onStatus?: (message: string, data?: Record<string, unknown>) => void;
   onWarning?: (message: string) => void;
+  onRawEvent?: (eventType: string, data: Record<string, unknown>) => void;
   autoStart?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function StreamingText({
   onError,
   onStatus,
   onWarning,
+  onRawEvent,
   autoStart = false,
 }: StreamingTextProps) {
   const [text, setText] = useState('');
@@ -72,6 +74,9 @@ export function StreamingText({
               try {
                 const data = JSON.parse(rawData) as Record<string, unknown>;
 
+                // Always fire raw event hook for custom handlers
+                onRawEvent?.(eventType, data);
+
                 switch (eventType) {
                   case 'chunk':
                     if (typeof data.text === 'string') {
@@ -90,10 +95,13 @@ export function StreamingText({
                     setIsStreaming(false);
                     break;
                   case 'status':
-                    if (typeof data.message === 'string') onStatus?.(data.message);
+                    if (typeof data.message === 'string') onStatus?.(data.message, data);
                     break;
                   case 'warning':
                     if (typeof data.message === 'string') onWarning?.(data.message);
+                    break;
+                  case 'module_status':
+                    // Handled via onRawEvent above
                     break;
                   // ping: ignore
                 }
@@ -110,7 +118,7 @@ export function StreamingText({
       }
       setIsStreaming(false);
     }
-  }, [url, body, onChapter, onComplete, onError, onStatus, onWarning, isStreaming]);
+  }, [url, body, onChapter, onComplete, onError, onStatus, onWarning, onRawEvent, isStreaming]);
 
   // Auto-scroll
   useEffect(() => {
