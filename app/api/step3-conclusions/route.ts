@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     });
 
     const conclusions = await callOpenRouter({
-      model: process.env.STEP3_MODEL || 'anthropic/claude-3-5-haiku-20241022',
+      model: process.env.STEP3_MODEL || 'anthropic/claude-4-6-sonnet',
       systemPrompt: STEP3_SYSTEM,
       maxTokens: 8192,
       messages: [{ role: 'user', content: userPrompt }],

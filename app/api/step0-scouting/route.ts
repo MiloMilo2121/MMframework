@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     });
 
     const rawText = await callOpenRouter({
-      model: process.env.STEP0_MODEL || 'anthropic/claude-3-5-haiku-20241022',
+      model: process.env.STEP0_MODEL || 'xiaomi/mimo-v2-pro',
       systemPrompt: STEP0_SYSTEM,
       maxTokens: 4096,
       messages: [{ role: 'user', content: userPrompt }],

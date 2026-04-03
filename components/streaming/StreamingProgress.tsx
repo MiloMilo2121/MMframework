@@ -13,7 +13,7 @@ interface Phase {
 export interface WorkerStatus {
   id: string;
   label: string;
-  status: 'pending' | 'running' | 'complete' | 'error';
+  status: 'pending' | 'running' | 'complete' | 'error' | 'partial';
   toolCalls?: number;
 }
 
@@ -25,19 +25,35 @@ interface StreamingProgressProps {
   workers?: WorkerStatus[];
 }
 
-const STATUS_COLOR = {
-  pending: '#D1D5DB',
-  active: 'var(--accent-primary)',
+const WORKER_COLOR: Record<WorkerStatus['status'], string> = {
+  pending:  '#D1D5DB',
+  running:  'var(--accent-primary)',
   complete: '#22C55E',
-  error: '#EF4444',
-  running: 'var(--accent-primary)',
+  partial:  '#F59E0B',
+  error:    '#EF4444',
 };
 
-const WORKER_ICON = {
-  pending: '⏳',
-  running: '⚡',
+const WORKER_ICON: Record<WorkerStatus['status'], string> = {
+  pending:  '○',
+  running:  '⚡',
   complete: '✓',
-  error: '✗',
+  partial:  '◑',
+  error:    '✗',
+};
+
+const WORKER_PROGRESS: Record<WorkerStatus['status'], number> = {
+  pending:  0,
+  running:  55,  // animated bar shows ~55% while running
+  complete: 100,
+  partial:  70,
+  error:    100,
+};
+
+const PHASE_STATUS_COLOR = {
+  pending:  '#D1D5DB',
+  active:   'var(--accent-primary)',
+  complete: '#22C55E',
+  error:    '#EF4444',
 };
 
 export function StreamingProgress({
@@ -47,80 +63,126 @@ export function StreamingProgress({
   estimatedSecondsLeft,
   workers = [],
 }: StreamingProgressProps) {
-  const statusColor = (s: Phase['status']) => STATUS_COLOR[s] || '#D1D5DB';
 
   return (
     <div className="space-y-4">
-      {/* Worker grid — shown when orchestrator is running */}
+
+      {/* Parallel Worker bars — shown when orchestrator is running */}
       {workers.length > 0 && (
-        <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--border-brand)', backgroundColor: 'var(--surface)' }}>
-          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-            Worker attivi
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {workers.map((w) => (
-              <div
-                key={w.id}
-                className="flex items-center gap-2 text-xs rounded-md px-2 py-1.5"
-                style={{
-                  backgroundColor: w.status === 'complete' ? '#F0FDF4' : w.status === 'error' ? '#FEF2F2' : '#F8FAFA',
-                  color: w.status === 'complete' ? '#166534' : w.status === 'error' ? '#991B1B' : 'var(--text-primary)',
-                }}
-              >
-                <span className="text-sm leading-none">
-                  {WORKER_ICON[w.status]}
-                </span>
-                <span className="font-medium truncate">{w.label}</span>
-                {w.toolCalls !== undefined && w.toolCalls > 0 && (
-                  <span className="ml-auto opacity-60 shrink-0">{w.toolCalls}🔍</span>
-                )}
-              </div>
-            ))}
+        <div
+          className="rounded-lg border p-4 space-y-3"
+          style={{ borderColor: 'var(--border-brand)', backgroundColor: 'var(--surface)' }}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+              Worker paralleli
+            </p>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              {workers.filter((w) => w.status === 'complete' || w.status === 'partial').length}/{workers.length} completati
+            </p>
+          </div>
+
+          <div className="space-y-2.5">
+            {workers.map((w) => {
+              const color = WORKER_COLOR[w.status] || '#D1D5DB';
+              const progress = WORKER_PROGRESS[w.status] ?? 0;
+              const isRunning = w.status === 'running';
+
+              return (
+                <div key={w.id} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-1.5 font-medium" style={{ color: 'var(--text-primary)' }}>
+                      <span style={{ color }}>{WORKER_ICON[w.status]}</span>
+                      {w.label}
+                    </span>
+                    <span className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                      {w.toolCalls !== undefined && w.toolCalls > 0 && (
+                        <span>{w.toolCalls} 🔍</span>
+                      )}
+                      <span style={{ color }}>
+                        {w.status === 'pending'  ? 'In attesa'   :
+                         w.status === 'running'  ? 'Ricerca...'  :
+                         w.status === 'complete' ? 'Completato'  :
+                         w.status === 'partial'  ? 'Parziale'    : 'Errore'}
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* Progress bar with animated pulse while running */}
+                  <div
+                    className="relative h-1.5 w-full rounded-full overflow-hidden"
+                    style={{ backgroundColor: color + '25' }}
+                  >
+                    <div
+                      className={isRunning ? 'animate-pulse' : ''}
+                      style={{
+                        height: '100%',
+                        width: `${progress}%`,
+                        backgroundColor: color,
+                        borderRadius: '9999px',
+                        transition: 'width 0.6s ease',
+                      }}
+                    />
+                    {/* Shimmer effect while running */}
+                    {isRunning && (
+                      <div
+                        className="absolute inset-0"
+                        style={{
+                          background: `linear-gradient(90deg, transparent 0%, ${color}50 50%, transparent 100%)`,
+                          animation: 'shimmer 1.5s infinite',
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* Phase bars */}
-      {phases.map((phase, i) => (
-        <div key={i} className="space-y-1">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-              FASE {i + 1}/{phases.length}: {phase.label}
-            </span>
-            <div className="flex items-center gap-2">
-              {phase.status === 'active' && estimatedSecondsLeft !== undefined && (
-                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  ~{Math.ceil(estimatedSecondsLeft / 60)}min
-                </span>
-              )}
-              <Badge
-                className="text-xs"
-                style={{
-                  backgroundColor: statusColor(phase.status) + '20',
-                  color: statusColor(phase.status),
-                  border: 'none',
-                }}
-              >
-                {phase.status === 'pending' ? 'In attesa' :
-                 phase.status === 'active' ? 'In corso...' :
-                 phase.status === 'complete' ? 'Completata' : 'Errore'}
-              </Badge>
+      {phases.map((phase, i) => {
+        const color = PHASE_STATUS_COLOR[phase.status] || '#D1D5DB';
+        return (
+          <div key={i} className="space-y-1">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                FASE {i + 1}/{phases.length}: {phase.label}
+              </span>
+              <div className="flex items-center gap-2">
+                {phase.status === 'active' && estimatedSecondsLeft !== undefined && (
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    ~{Math.ceil(estimatedSecondsLeft / 60)}min
+                  </span>
+                )}
+                <Badge
+                  className="text-xs"
+                  style={{
+                    backgroundColor: color + '20',
+                    color,
+                    border: 'none',
+                  }}
+                >
+                  {phase.status === 'pending'  ? 'In attesa'  :
+                   phase.status === 'active'   ? 'In corso...' :
+                   phase.status === 'complete' ? 'Completata' : 'Errore'}
+                </Badge>
+              </div>
             </div>
+            <Progress
+              value={phase.progress}
+              className="h-2"
+              style={{ ['--progress-color' as string]: color }}
+            />
+            {phase.status === 'active' && currentChapter && (
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                {currentChapter}
+              </p>
+            )}
           </div>
-          <Progress
-            value={phase.progress}
-            className="h-2"
-            style={{
-              ['--progress-color' as string]: statusColor(phase.status),
-            }}
-          />
-          {phase.status === 'active' && currentChapter && (
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {currentChapter}
-            </p>
-          )}
-        </div>
-      ))}
+        );
+      })}
 
       {/* Event log */}
       {log.length > 0 && (
@@ -133,7 +195,13 @@ export function StreamingProgress({
             style={{ backgroundColor: '#0d1117', color: '#7d8590' }}
           >
             {log.map((entry, i) => (
-              <div key={i} className={entry.type === 'error' ? 'text-red-400' : entry.type === 'warning' ? 'text-yellow-400' : ''}>
+              <div
+                key={i}
+                className={
+                  entry.type === 'error'   ? 'text-red-400'    :
+                  entry.type === 'warning' ? 'text-yellow-400' : ''
+                }
+              >
                 <span className="opacity-50">{entry.ts}</span>{' '}
                 <span>{entry.message}</span>
               </div>
@@ -141,6 +209,14 @@ export function StreamingProgress({
           </div>
         </details>
       )}
+
+      {/* Shimmer keyframe (injected once) */}
+      <style>{`
+        @keyframes shimmer {
+          0%   { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+      `}</style>
     </div>
   );
 }
