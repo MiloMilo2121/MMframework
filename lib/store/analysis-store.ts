@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { Analysis, AnalysisStatus } from '@/lib/types/analysis';
+import type { Analysis, AnalysisStatus, AnalysisVectorConfig } from '@/lib/types/analysis';
 import type { HandoffData1, HandoffOperativo } from '@/lib/types/handoff';
 
 interface AnalysisStore {
@@ -16,6 +16,7 @@ interface AnalysisStore {
     geography?: string;
     businessType?: 'b2b' | 'b2c' | 'mixed';
     notes?: string;
+    vectorConfig?: AnalysisVectorConfig;
   }) => string;
 
   updateAnalysis: (id: string, updates: Partial<Analysis>) => void;
@@ -50,6 +51,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
           createdAt: now,
           updatedAt: now,
           status: 'draft',
+          vectorConfig: input.vectorConfig,
           metadata: {
             totalTokens: 0,
             generationTimeMs: 0,

@@ -3,16 +3,22 @@
  *
  * Phase A: Build ResearchLedger from client context
  * Phase B: Promise.allSettled — 4 Miner Workers in parallel + 1 Challenger
- * Phase C: CoherenceGate — claude-opus-4-6 writes the final report (streaming)
+ * Phase C: Architect → hierarchical DocumentPlan
+ * Phase D: Ghostwriter loop — one callOpenRouter per sub-chapter (Telaio Ricorsivo)
+ * Phase E: Isolated HANDOFF_OPERATIVO extraction (Sonnet, Zod-protected)
+ *
+ * Model routing (blindato):
+ *   Miners  → MODEL_TIERS.MINER     (deepseek-chat)  — extraction only
+ *   Architect → MODEL_TIERS.ARCHITECT (deepseek-r1)   — index planning only
+ *   Ghostwriter → coherenceModel    (claude-sonnet)   — prose writing only
  */
 import { NextRequest } from 'next/server';
-import { openrouter } from '@/lib/ai/openrouter';
-import { MAX_TOOL_CALLS, type ToolName } from '@/lib/ai/tools';
-import { executeTool } from '@/lib/ai/tool-executor';
+import { callOpenRouter, MODEL_TIERS } from '@/lib/ai/openrouter';
 import { runWorker } from '@/lib/ai/workers';
 import {
   createEmptyLedger,
   mergeLedger,
+  filterLedgerByFocus,
   type ContradictionEntry,
 } from '@/lib/types/research-ledger';
 import {
@@ -29,16 +35,34 @@ import {
   buildWorkerExtractPrompt,
   buildChallengerUserPrompt,
 } from '@/lib/ai/prompts/step2-workers';
+import { COHERENCE_GATE_SYSTEM } from '@/lib/ai/prompts/step2-coherence';
+import { generateHierarchicalIndex } from '@/lib/ai/architect';
 import {
-  COHERENCE_GATE_SYSTEM,
-  buildCoherenceGateUserPrompt,
-} from '@/lib/ai/prompts/step2-coherence';
+  buildDynamicTone,
+  buildSubChapterPrompt,
+  summarizeForNextChapter,
+  buildHandoffExtractionPrompt,
+} from '@/lib/ai/ghostwriter';
 import { parseHandoffOperativo } from '@/lib/parsers/parse-handoff';
 import { extractContextBridge } from '@/lib/parsers/parse-report';
-import { healResponse } from '@/lib/ai/response-healing';
-import type OpenAI from 'openai';
+import type { AnalysisVectorConfig } from '@/lib/types/analysis';
 
 export const maxDuration = 300;
+
+const DEFAULT_VECTOR_CONFIG: AnalysisVectorConfig = {
+  effort_tier: 2,
+  target_audience: {
+    role: 'Titolare',
+    age_bracket: '40-60',
+    tech_literacy: 'medium',
+    cynicism_level: 'standard',
+  },
+  strategic_modifiers: {
+    international_context: false,
+    include_ma_targets: false,
+    include_blue_ocean: false,
+  },
+};
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as {
@@ -47,6 +71,7 @@ export async function POST(req: NextRequest) {
     questionnaire?: string;
     materials?: string;
     analysisId?: string;
+    vectorConfig?: AnalysisVectorConfig;
   };
 
   const encoder = new TextEncoder();
@@ -69,11 +94,13 @@ export async function POST(req: NextRequest) {
 
       try {
         // Tier 1 — Miners: cheap extraction model, never writes prose
-        const minerModel = process.env.MINER_MODEL || 'deepseek/deepseek-chat';
+        const minerModel = MODEL_TIERS.MINER;
         // Tier 3 — Ghostwriter: only model that writes the final report
         const coherenceModel = process.env.GHOSTWRITER_MODEL || process.env.COHERENCE_MODEL || 'anthropic/claude-sonnet-4-5';
+        // Config vector — defaults to tier 2 / standard if not provided (backward-compatible)
+        const vectorConfig: AnalysisVectorConfig = body.vectorConfig || DEFAULT_VECTOR_CONFIG;
 
-        // ── Phase A: Build initial ledger ────────────────────────────────────
+        // ── Phase A: Build initial ledger ─────────────────────────────────────
         send('status', { phase: 'init', message: '🏗️ Costruzione Research Ledger...', step: 'init' });
 
         let clientSnapshotParsed: Record<string, unknown> = {};
@@ -95,7 +122,6 @@ export async function POST(req: NextRequest) {
           (clientSnapshotParsed as { locations?: string[] }).locations?.[0] || 'Italia'
         );
 
-        // Build context slice for Workers
         const contextSlice = buildContextSlice(body.clientSnapshot, body.handoffData1, body.questionnaire);
 
         const ledger = createEmptyLedger({
@@ -112,7 +138,7 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // ── Phase B: Run 4 Miners in parallel ───────────────────────────────
+        // ── Phase B: Run 4 Miners in parallel ────────────────────────────────
         send('status', { phase: 'workers', message: `⚡ Avvio 4 Worker in parallelo con ${minerModel}...`, step: 'workers_start' });
         send('module_status', { workerId: 'market_dynamics', status: 'running', toolCalls: 0 });
         send('module_status', { workerId: 'competitor_intelligence', status: 'running', toolCalls: 0 });
@@ -154,7 +180,6 @@ export async function POST(req: NextRequest) {
           }),
         ]);
 
-        // Merge Worker outputs into ledger
         for (const result of workerResults) {
           if (result.status === 'fulfilled') {
             const output = result.value;
@@ -178,7 +203,7 @@ export async function POST(req: NextRequest) {
         });
         send('module_status', { workerId: 'swoc_synthesis', status: 'running', toolCalls: 0 });
 
-        // ── Phase B.5: Challenger cross-validation ───────────────────────────
+        // ── Phase B.5: Challenger cross-validation ────────────────────────────
         const w1 = ledger.modules.market_dynamics?.structured_data || ledger.modules.market_dynamics?.summary_markdown.slice(0, 2000) || '{}';
         const w2 = ledger.modules.competitor_intelligence?.structured_data || ledger.modules.competitor_intelligence?.summary_markdown.slice(0, 2000) || '{}';
         const w3 = ledger.modules.product_tech?.structured_data || ledger.modules.product_tech?.summary_markdown.slice(0, 2000) || '{}';
@@ -193,7 +218,6 @@ export async function POST(req: NextRequest) {
 
         mergeLedger(ledger, challengerOutput);
 
-        // Extract contradictions from challenger output
         if (challengerOutput.structured_data) {
           try {
             const parsed = JSON.parse(challengerOutput.structured_data) as {
@@ -212,179 +236,140 @@ export async function POST(req: NextRequest) {
           contradictions: ledger.contradictions_log.length,
         });
 
+        // ── Phase C: Architect generates hierarchical DocumentPlan ─────────────
+        send('status', { phase: 'architect', message: '🏛️ Architetto genera indice gerarchico...', step: 'architect' });
+
+        // Compact ledger summary for Architect (keeps its prompt small)
+        const ledgerSummary = JSON.stringify({
+          facts_count: ledger.verified_facts.length,
+          market_points: ledger.market_data.length,
+          competitors_found: ledger.competitor_matrix.map((c) => c.name),
+          top_facts: ledger.verified_facts.slice(0, 8),
+          top_market_data: ledger.market_data.slice(0, 6),
+          contradictions: ledger.contradictions_log.length,
+        }, null, 2);
+
+        const documentPlan = await generateHierarchicalIndex(ledgerSummary, vectorConfig, clientName, sector);
+        const totalSubs = documentPlan.macro_sections.reduce((acc: number, s) => acc + s.sub_chapters.length, 0);
+
+        send('status', {
+          phase: 'architect',
+          message: `📋 Piano: ${documentPlan.macro_sections.length} sezioni, ${totalSubs} sub-capitoli`,
+          step: 'plan_ready',
+        });
+
+        // ── Phase D: Ghostwriter loop — Telaio Ricorsivo ──────────────────────
         send('status', {
           phase: 'coherence',
-          message: `🧠 Avvio CoherenceGate con ${coherenceModel}... (${ledger.verified_facts.length} fatti, ${ledger.competitor_matrix.length} competitor)`,
+          message: `🧠 Avvio Ghostwriter con ${coherenceModel}... (${ledger.verified_facts.length} fatti, ${ledger.competitor_matrix.length} competitor)`,
           step: 'coherence_start',
         });
 
-        // ── Phase C: CoherenceGate streaming ────────────────────────────────
-        const ledgerJson = JSON.stringify(ledger, null, 2);
-        const coherenceUserPrompt = buildCoherenceGateUserPrompt({
-          clientName,
-          sector,
-          geography,
-          handoffData1: body.handoffData1 || '',
-          ledgerJson,
-        });
+        const toneInstructions = buildDynamicTone(vectorConfig.target_audience);
+        let finalReportMarkdown = '';
+        let rollingSummary = '';
+        let subChaptersWritten = 0;
 
-        const coherenceMessages: OpenAI.ChatCompletionMessageParam[] = [
-          { role: 'user', content: coherenceUserPrompt },
-        ];
+        for (const section of documentPlan.macro_sections) {
+          const sectionHeader = `# ${section.section_number}. ${section.section_title}\n\n`;
+          finalReportMarkdown += sectionHeader;
+          send('chunk', { text: sectionHeader });
 
-        let fullText = '';
-        let toolCallCount = 0;
-        let iterationCount = 0;
-        const MAX_ITERATIONS = 30;
-        let currentChapter = 'Avvio CoherenceGate...';
+          for (const sub of section.sub_chapters) {
+            send('status', {
+              phase: 'drafting',
+              message: `✍️ Scrivendo: ${sub.sub_number} ${sub.title}`,
+              step: 'writing',
+            });
 
-        // CoherenceGate uses streaming (same pattern as part1/route.ts)
-        while (iterationCount < MAX_ITERATIONS && toolCallCount < MAX_TOOL_CALLS) {
-          iterationCount++;
+            // Ledger Slicer — surgical context for this sub-chapter only
+            const surgicalLedger = filterLedgerByFocus(ledger, sub.required_data_focus);
+            // Cap context to ~18k chars to stay well within Ghostwriter's window
+            const contextJson = JSON.stringify(surgicalLedger, null, 2).slice(0, 18_000);
 
-          const toolCallAccumulator: Array<{
-            index: number;
-            id: string;
-            name: string;
-            arguments: string;
-          }> = [];
+            try {
+              const subText = await callOpenRouter({
+                model: coherenceModel,
+                systemPrompt: COHERENCE_GATE_SYSTEM,
+                maxTokens: Math.min(Math.round(sub.target_words * 5.5), 4096),
+                temperature: 0.4,
+                frequency_penalty: 0.35,
+                messages: [{
+                  role: 'user',
+                  content: buildSubChapterPrompt({
+                    subChapter: sub,
+                    section,
+                    clientName,
+                    sector,
+                    toneInstructions,
+                    rollingSummary,
+                    contextJson,
+                  }),
+                }],
+              });
 
-          let finishReason = '';
-          let iterationText = '';
+              const subHeader = `## ${sub.sub_number} ${sub.title}\n\n`;
+              const subBlock = subHeader + subText + '\n\n';
+              finalReportMarkdown += subBlock;
+              send('chunk', { text: subBlock });
+              send('chapter', { chapter: `${sub.sub_number} ${sub.title}` });
 
-          const streamResponse = await (openrouter.chat.completions.create({
+              subChaptersWritten++;
+
+              // Rolling summary via MINER (cheap, sequential — coherence requires order)
+              rollingSummary = await summarizeForNextChapter(subText);
+            } catch (subErr) {
+              const errMsg = subErr instanceof Error ? subErr.message : 'errore sconosciuto';
+              console.error(`[orchestrator] Sub-chapter ${sub.sub_number} failed:`, errMsg);
+              const placeholder = `## ${sub.sub_number} ${sub.title}\n\n[Sezione non disponibile — ${errMsg}]\n\n`;
+              finalReportMarkdown += placeholder;
+              send('chunk', { text: placeholder });
+              send('warning', { message: `⚠️ ${sub.sub_number} fallito: ${errMsg}`, code: 'SUB_CHAPTER_ERROR' });
+            }
+          }
+        }
+
+        // ── Phase E: Isolated HANDOFF_OPERATIVO extraction ────────────────────
+        send('status', { phase: 'handoff', message: '📦 Estrazione HANDOFF_OPERATIVO...', step: 'handoff' });
+
+        let handoffRawText = '';
+        try {
+          handoffRawText = await callOpenRouter({
             model: coherenceModel,
-            max_tokens: 64000,
-            temperature: 0.4,
-            frequency_penalty: 0.3,
-            stream: true,
-            // CoherenceGate doesn't use tools — it only writes
-            messages: [
-              {
-                role: 'system',
-                content: [
-                  { type: 'text', text: COHERENCE_GATE_SYSTEM, cache_control: { type: 'ephemeral' } },
-                ] as unknown as string,
-              },
-              ...coherenceMessages,
-            ],
-          } as Parameters<typeof openrouter.chat.completions.create>[0]) as Promise<
-            AsyncIterable<{
-              choices: Array<{
-                delta: {
-                  content?: string | null;
-                  tool_calls?: Array<{
-                    index: number;
-                    id?: string;
-                    type?: string;
-                    function?: { name?: string; arguments?: string };
-                  }>;
-                };
-                finish_reason?: string | null;
-              }>;
-            }>
-          >);
-
-          for await (const chunk of streamResponse) {
-            const choice = chunk.choices?.[0];
-            if (!choice) continue;
-
-            const delta = choice.delta;
-
-            if (typeof delta.content === 'string' && delta.content) {
-              iterationText += delta.content;
-              fullText += delta.content;
-              send('chunk', { text: delta.content });
-
-              const matches = fullText.match(/^## (CAP\s+\d+[^#\n]*|EXECUTIVE SUMMARY[^\n]*)/gm);
-              if (matches && matches.length > 0) {
-                const latest = matches[matches.length - 1].replace(/^## /, '');
-                if (latest !== currentChapter) {
-                  currentChapter = latest;
-                  send('chapter', { chapter: currentChapter });
-                  send('status', {
-                    phase: 'coherence',
-                    message: `✍️ Scrivendo: ${currentChapter.slice(0, 60)}`,
-                    step: 'writing',
-                  });
-                }
-              }
-            }
-
-            if (delta.tool_calls && delta.tool_calls.length > 0) {
-              for (const tcDelta of delta.tool_calls) {
-                const idx = tcDelta.index ?? 0;
-                if (!toolCallAccumulator[idx]) {
-                  toolCallAccumulator[idx] = { index: idx, id: '', name: '', arguments: '' };
-                }
-                if (tcDelta.id) toolCallAccumulator[idx].id = tcDelta.id;
-                if (tcDelta.function?.name) toolCallAccumulator[idx].name += tcDelta.function.name;
-                if (tcDelta.function?.arguments) toolCallAccumulator[idx].arguments += tcDelta.function.arguments;
-              }
-            }
-
-            if (choice.finish_reason) finishReason = choice.finish_reason;
-          }
-
-          const pendingToolCalls = toolCallAccumulator.filter((tc) => tc && tc.name);
-
-          if (
-            (finishReason === 'tool_calls' || finishReason === 'tool_use' || pendingToolCalls.length > 0) &&
-            toolCallCount < MAX_TOOL_CALLS
-          ) {
-            const assistantMsg: OpenAI.ChatCompletionMessageParam = {
-              role: 'assistant',
-              content: iterationText || null,
-              tool_calls: pendingToolCalls.map((tc) => ({
-                id: tc.id || `call_${tc.index}`,
-                type: 'function' as const,
-                function: { name: tc.name, arguments: tc.arguments },
-              })),
-            };
-            coherenceMessages.push(assistantMsg);
-
-            const toolResultMessages: OpenAI.ChatCompletionMessageParam[] = [];
-            for (const tc of pendingToolCalls) {
-              toolCallCount++;
-              let toolArgs: Record<string, unknown> = {};
-              try { toolArgs = JSON.parse(tc.arguments || '{}'); } catch { /* ok */ }
-
-              const result = await executeTool(tc.name as ToolName, toolArgs);
-              toolResultMessages.push({
-                role: 'tool',
-                tool_call_id: tc.id || `call_${tc.index}`,
-                content: result,
-              } as OpenAI.ChatCompletionMessageParam);
-            }
-            coherenceMessages.push(...toolResultMessages);
-            continue;
-          }
-
-          break;
+            maxTokens: 6000,
+            temperature: 0.1,
+            messages: [{
+              role: 'user',
+              content: buildHandoffExtractionPrompt(finalReportMarkdown, clientName, sector),
+            }],
+          });
+        } catch (err) {
+          console.error('[orchestrator] Handoff extraction failed:', err);
+          send('warning', { message: '⚠️ Estrazione HANDOFF_OPERATIVO fallita', code: 'MISSING_HANDOFF' });
         }
 
-        // Healing if needed
-        if (!fullText.includes('HANDOFF_OPERATIVO') && !fullText.includes('handoff_operativo')) {
-          send('warning', { message: '⚠️ HANDOFF_OPERATIVO non trovato — healing...', code: 'MISSING_HANDOFF' });
-          fullText = await healResponse(fullText, 'handoff_operativo', coherenceModel);
-        }
-
-        const { data: handoffOperativo } = parseHandoffOperativo(fullText);
-        const wordCount = fullText.split(/\s+/).length;
-        const chaptersFound = (fullText.match(/^## CAP\s+\d+/gm) || []).length;
-        const contextBridge = extractContextBridge(fullText);
+        const { data: handoffOperativo } = parseHandoffOperativo(handoffRawText || finalReportMarkdown);
+        const wordCount = finalReportMarkdown.split(/\s+/).length;
+        const chaptersFound = (finalReportMarkdown.match(/^## \d+\.\d+/gm) || []).length;
+        const contextBridge = extractContextBridge(finalReportMarkdown);
 
         send('complete', {
-          fullText,
+          fullText: finalReportMarkdown,
           contextBridge,
           handoffOperativo,
           wordCount,
           chaptersFound,
-          toolCallsUsed: toolCallCount,
+          toolCallsUsed: 0,
           workersCompleted: completedWorkers,
           factsGathered: ledger.verified_facts.length,
           competitorsFound: ledger.competitor_matrix.length,
           contradictionsResolved: ledger.contradictions_log.length,
+          subChaptersWritten,
+          totalSubChapters: totalSubs,
+          documentStructure: {
+            sections: documentPlan.macro_sections.length,
+            effort_tier: vectorConfig.effort_tier,
+          },
         });
 
       } catch (err) {

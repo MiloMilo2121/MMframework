@@ -6,6 +6,13 @@ import { Step2Scouting } from './steps/Step2Scouting';
 import { Step3Questionnaire } from './steps/Step3Questionnaire';
 import { Step4Blueprint } from './steps/Step4Blueprint';
 import { Step5Research } from './steps/Step5Research';
+import type { AnalysisVectorConfig } from '@/lib/types/analysis';
+
+const DEFAULT_VECTOR: AnalysisVectorConfig = {
+  effort_tier: 2,
+  target_audience: { role: 'Titolare', age_bracket: '40-60', tech_literacy: 'medium', cynicism_level: 'standard' },
+  strategic_modifiers: { international_context: false, include_ma_targets: false, include_blue_ocean: false },
+};
 
 const STEP_LABELS = [
   'Dati Cliente',
@@ -20,6 +27,7 @@ export function WizardShell() {
   const [analysisId, setAnalysisId] = useState('');
   const [questionnaire, setQuestionnaire] = useState('');
   const [materials, setMaterials] = useState<string | undefined>();
+  const [vectorConfig, setVectorConfig] = useState<AnalysisVectorConfig>(DEFAULT_VECTOR);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--surface)' }}>
@@ -78,8 +86,9 @@ export function WizardShell() {
       <div className="flex-1 max-w-4xl mx-auto w-full px-6 py-8">
         {currentStep === 1 && (
           <Step1ClientData
-            onNext={(id) => {
+            onNext={(id, config) => {
               setAnalysisId(id);
+              setVectorConfig(config);
               setCurrentStep(2);
             }}
           />
@@ -112,7 +121,10 @@ export function WizardShell() {
         )}
 
         {currentStep === 5 && analysisId && (
-          <Step5Research analysisId={analysisId} />
+          <Step5Research
+            analysisId={analysisId}
+            vectorConfig={vectorConfig}
+          />
         )}
       </div>
     </div>

@@ -8,9 +8,17 @@ import { StreamingText } from '@/components/streaming/StreamingText';
 import { StreamingProgress, type WorkerStatus } from '@/components/streaming/StreamingProgress';
 import { useAnalysisStore } from '@/lib/store/analysis-store';
 import type { HandoffOperativo } from '@/lib/types/handoff';
+import type { AnalysisVectorConfig } from '@/lib/types/analysis';
+
+const DEFAULT_VECTOR: AnalysisVectorConfig = {
+  effort_tier: 2,
+  target_audience: { role: 'Titolare', age_bracket: '40-60', tech_literacy: 'medium', cynicism_level: 'standard' },
+  strategic_modifiers: { international_context: false, include_ma_targets: false, include_blue_ocean: false },
+};
 
 interface Props {
   analysisId: string;
+  vectorConfig?: AnalysisVectorConfig;
 }
 
 type PhaseStatus = 'pending' | 'active' | 'complete' | 'error';
@@ -23,7 +31,7 @@ const WORKER_LABELS: Record<string, string> = {
   swoc_synthesis: 'Challenger QA',
 };
 
-export function Step5Research({ analysisId }: Props) {
+export function Step5Research({ analysisId, vectorConfig = DEFAULT_VECTOR }: Props) {
   const router = useRouter();
   const { getById, updateStatus, setReportPart1, setReportPart2, setConclusions, updateAnalysis } = useAnalysisStore();
   const analysis = getById(analysisId);
@@ -57,10 +65,16 @@ export function Step5Research({ analysisId }: Props) {
   const handleChapter = useCallback((chapter: string) => {
     setCurrentChapter(chapter);
     addLog(`📄 ${chapter}`);
-    // Estimate progress based on chapter number
-    const match = chapter.match(/CAP\s+(\d+)/);
-    if (match) {
-      const capNum = parseInt(match[1], 10);
+    // Estimate progress: support both legacy "CAP X" and new "X.Y" hierarchical format
+    const hierarchicalMatch = chapter.match(/^(\d+)\.(\d+)/);
+    const legacyMatch = chapter.match(/CAP\s+(\d+)/);
+    if (hierarchicalMatch) {
+      const section = parseInt(hierarchicalMatch[1], 10);
+      const sub = parseInt(hierarchicalMatch[2], 10);
+      // Rough progress: distribute 55% of bar across sections (from 40% to 95%)
+      setOrchestratorProgress(Math.min(95, 40 + section * 8 + sub));
+    } else if (legacyMatch) {
+      const capNum = parseInt(legacyMatch[1], 10);
       setOrchestratorProgress(Math.min(95, 40 + capNum * 4));
     }
   }, [addLog]);
@@ -176,6 +190,7 @@ export function Step5Research({ analysisId }: Props) {
     handoffData1: JSON.stringify(analysis?.handoffData1 || {}),
     questionnaire: analysis?.questionnaire,
     analysisId,
+    vectorConfig,
   };
 
   const elapsedMs = Date.now() - startTimeRef.current;

@@ -11,7 +11,9 @@ export type ModuleId =
   | 'competitor_intelligence'
   | 'product_tech'
   | 'economics_pricing'
-  | 'swoc_synthesis';
+  | 'swoc_synthesis'
+  | 'marketing_angles'    // reserved — tier 2+ (Meta Ads / Copy worker, not yet implemented)
+  | 'corporate_health';  // reserved — tier 3+ (LinkedIn/HR worker, not yet implemented)
 
 export type VerificationStatus = 'verified' | 'estimated' | 'unverified' | 'contradicted';
 
@@ -114,6 +116,27 @@ export function createEmptyLedger(params: {
     competitor_matrix: [],
     contradictions_log: [],
     modules: {},
+  };
+}
+
+/**
+ * Ledger Slicer — returns only the subset of ledger data relevant to a given
+ * set of focus areas (ModuleIds). Used by the Ghostwriter to receive surgical
+ * context instead of the full ledger JSON, preventing context saturation.
+ *
+ * For unknown/future ModuleIds (marketing_angles, corporate_health) the
+ * arrays will simply be empty — the Ghostwriter handles this gracefully.
+ */
+export function filterLedgerByFocus(
+  ledger: ResearchLedger,
+  focusAreas: string[]
+): Pick<ResearchLedger, 'verified_facts' | 'market_data' | 'competitor_matrix'> {
+  const areas = new Set(focusAreas);
+  return {
+    verified_facts: ledger.verified_facts.filter((f) => areas.has(f.contributed_by)),
+    market_data: ledger.market_data.filter((d) => areas.has(d.contributed_by)),
+    // Competitor data is always gated on competitor_intelligence being in focus
+    competitor_matrix: areas.has('competitor_intelligence') ? ledger.competitor_matrix : [],
   };
 }
 
