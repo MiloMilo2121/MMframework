@@ -1,149 +1,185 @@
 /**
- * Worker engine — non-streaming tool use loop for the 5 Miner modules.
+ * Worker engine — Map-Reduce architecture for the 5 Miner modules.
  *
- * Workers are pure async functions. They use the same tool use pattern
- * as part1/route.ts but batch (stream: false) for simplicity.
- * Each Worker returns a ModuleOutput that gets merged into the ResearchLedger.
+ * Each Miner runs 3 phases:
+ *   Phase A — LLM generates a JSON array of targeted search queries (no tools)
+ *   Phase B — Node.js executes queries in parallel batches via Exa (no LLM)
+ *   Phase C — LLM extracts structured ModuleOutput JSON from the raw text (no tools)
+ *
+ * The Challenger (swoc_synthesis) skips Phase A/B and only runs Phase C
+ * because it analyses the outputs of the other workers, not raw web pages.
  */
 import { openrouter } from './openrouter';
-import { RESEARCH_TOOLS, type ToolName } from './tools';
-import { executeTool } from './tool-executor';
+import { batchSearchExa, formatExaResultsForPrompt } from './exa';
 import { extractJson } from '@/lib/parsers/extract-json';
 import type { ModuleId, ModuleOutput } from '@/lib/types/research-ledger';
 import type OpenAI from 'openai';
 
-const MAX_WORKER_TOOL_CALLS = 10;
-const MAX_WORKER_ITERATIONS = 15;
-const WORKER_TIMEOUT_MS = 90_000; // 90 second hard limit per Worker
+// ── Tuning constants ──────────────────────────────────────────────────────────
+const MAX_QUERIES_PER_WORKER = 30;   // Phase A cap (30 × 5 results = 150 pages max)
+const EXA_BATCH_SIZE         = 8;    // Concurrent Exa requests per batch
+const EXA_RESULTS_PER_QUERY  = 5;    // Results returned per query
+const MAX_RAW_TEXT_CHARS     = 120_000; // ~30k tokens fed into Phase C
+const WORKER_TIMEOUT_MS      = 120_000; // 120 s hard limit per Worker
 
+// ── WorkerInput ───────────────────────────────────────────────────────────────
 export interface WorkerInput {
   moduleId: ModuleId;
+  /** Phase C: system prompt for data extraction */
   systemPrompt: string;
+  /** Phase C: user prompt — raw search text will be appended */
   userPrompt: string;
   model: string;
+  /** Phase A: system prompt for query generation (Map-Reduce path) */
+  queryGenSystemPrompt?: string;
+  /** Phase A: user prompt for query generation (Map-Reduce path) */
+  queryGenUserPrompt?: string;
 }
 
-/**
- * Run a single Worker module. Non-streaming.
- * Returns a ModuleOutput even on partial failure (graceful degradation).
- */
+// ── Public entry point ────────────────────────────────────────────────────────
 export async function runWorker(input: WorkerInput): Promise<ModuleOutput> {
-  const { moduleId, systemPrompt, userPrompt, model } = input;
+  const useMapReduce = Boolean(input.queryGenSystemPrompt && input.queryGenUserPrompt);
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(
+      () => reject(new Error(`Worker ${input.moduleId} timeout after ${WORKER_TIMEOUT_MS / 1000}s`)),
+      WORKER_TIMEOUT_MS
+    )
+  );
+
+  try {
+    return await Promise.race([
+      useMapReduce ? runMapReduce(input) : runToolCallLoop(input),
+      timeoutPromise,
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error(`[Worker ${input.moduleId}] Fatal:`, msg);
+    return emptyOutput(input.moduleId, msg);
+  }
+}
+
+// ── Map-Reduce path ───────────────────────────────────────────────────────────
+async function runMapReduce(input: WorkerInput): Promise<ModuleOutput> {
+  const { moduleId, model, queryGenSystemPrompt, queryGenUserPrompt, systemPrompt, userPrompt } = input;
+
+  // ── Phase A: generate query list ─────────────────────────────────────────
+  const queryResponse = await openrouter.chat.completions.create({
+    model,
+    max_tokens: 2000,
+    temperature: 0.1,
+    top_p: 0.1,
+    stream: false,
+    messages: [
+      { role: 'system', content: queryGenSystemPrompt! },
+      { role: 'user', content: queryGenUserPrompt! },
+    ],
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
+
+  let queries: string[] = [];
+  const queryRaw = queryResponse.choices?.[0]?.message?.content || '';
+  try {
+    const jsonStr = extractJson(queryRaw);
+    const parsed = JSON.parse(jsonStr) as unknown;
+    if (Array.isArray(parsed)) {
+      queries = parsed.filter((q): q is string => typeof q === 'string');
+    } else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).queries)) {
+      queries = ((parsed as Record<string, unknown>).queries as unknown[]).filter(
+        (q): q is string => typeof q === 'string'
+      );
+    }
+  } catch {
+    console.warn(`[Worker ${moduleId}] Phase A: no query JSON found — falling back to empty`);
+  }
+
+  if (queries.length === 0) {
+    return emptyOutput(moduleId, 'Phase A produced zero queries');
+  }
+
+  const cappedQueries = queries.slice(0, MAX_QUERIES_PER_WORKER);
+  console.log(`[Worker ${moduleId}] Phase A: ${cappedQueries.length} queries generated`);
+
+  // ── Phase B: batch fetch via Exa ──────────────────────────────────────────
+  const rawResults = await batchSearchExa(cappedQueries, EXA_BATCH_SIZE, EXA_RESULTS_PER_QUERY);
+  const rawText = formatExaResultsForPrompt(rawResults).slice(0, MAX_RAW_TEXT_CHARS);
+  console.log(`[Worker ${moduleId}] Phase B: ${rawResults.length} pages fetched (${rawText.length} chars)`);
+
+  // ── Phase C: extract structured data ─────────────────────────────────────
+  const extractResponse = await openrouter.chat.completions.create({
+    model,
+    max_tokens: 8000,
+    temperature: 0.1,
+    top_p: 0.1,
+    presence_penalty: -0.5,
+    stream: false,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `${userPrompt}\n\n${'═'.repeat(60)}\nRAW SEARCH RESULTS (${rawResults.length} pagine da Exa)\n${'═'.repeat(60)}\n${rawText}`,
+      },
+    ],
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
+
+  const fullText = extractResponse.choices?.[0]?.message?.content || '';
+  console.log(`[Worker ${moduleId}] Phase C: ${fullText.length} chars extracted`);
+
+  return buildOutput(moduleId, fullText, cappedQueries.length);
+}
+
+// ── Legacy tool-call loop (used for Challenger) ───────────────────────────────
+async function runToolCallLoop(input: WorkerInput): Promise<ModuleOutput> {
+  const { moduleId, model, systemPrompt, userPrompt } = input;
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: 'user', content: userPrompt },
   ];
 
   let fullText = '';
-  let toolCallCount = 0;
   let iterationCount = 0;
+  const MAX_ITERATIONS = 5; // Challenger doesn't need tools, so low limit
 
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`Worker ${moduleId} timeout after ${WORKER_TIMEOUT_MS / 1000}s`)), WORKER_TIMEOUT_MS)
-  );
+  while (iterationCount < MAX_ITERATIONS) {
+    iterationCount++;
 
-  try {
-    await Promise.race([
-      (async () => {
-        while (iterationCount < MAX_WORKER_ITERATIONS && toolCallCount < MAX_WORKER_TOOL_CALLS) {
-          iterationCount++;
+    const response = await openrouter.chat.completions.create({
+      model,
+      max_tokens: 8000,
+      temperature: 0.1,
+      top_p: 0.1,
+      stream: false,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...messages,
+      ],
+    } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
 
-          const response = await openrouter.chat.completions.create({
-            model,
-            max_tokens: 8000,
-            temperature: 0.1,
-            top_p: 0.1,
-            presence_penalty: -0.5,
-            stream: false,
-            tools: RESEARCH_TOOLS,
-            tool_choice: 'auto',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...messages,
-            ],
-          } as Parameters<typeof openrouter.chat.completions.create>[0]) as OpenAI.ChatCompletion;
+    const choice = response.choices?.[0];
+    if (!choice) break;
 
-          const choice = response.choices?.[0];
-          if (!choice) break;
+    const text = typeof choice.message.content === 'string' ? choice.message.content : '';
+    if (text) fullText += text + '\n';
 
-          const assistantMessage = choice.message;
-          const textContent = typeof assistantMessage.content === 'string' ? assistantMessage.content : '';
-          if (textContent) fullText += textContent + '\n';
-
-          const toolCalls = assistantMessage.tool_calls || [];
-
-          if (choice.finish_reason === 'tool_calls' || toolCalls.length > 0) {
-            // Append assistant message
-            messages.push({
-              role: 'assistant',
-              content: textContent || null,
-              tool_calls: toolCalls,
-            } as OpenAI.ChatCompletionMessageParam);
-
-            // Execute tools
-            for (const tc of toolCalls) {
-              if (toolCallCount >= MAX_WORKER_TOOL_CALLS) break;
-              toolCallCount++;
-
-              const tcFunc = (tc as unknown as { function: { name: string; arguments: string } }).function;
-              let toolArgs: Record<string, unknown> = {};
-              try {
-                toolArgs = JSON.parse(tcFunc.arguments || '{}');
-              } catch {
-                toolArgs = {};
-              }
-
-              const result = await executeTool(tcFunc.name as ToolName, toolArgs);
-
-              messages.push({
-                role: 'tool',
-                tool_call_id: String(tc.id || ''),
-                content: result,
-              } as OpenAI.ChatCompletionMessageParam);
-            }
-            continue;
-          }
-
-          // finish_reason === 'stop' — done
-          break;
-        }
-      })(),
-      timeoutPromise,
-    ]);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[Worker ${moduleId}] Error:`, msg);
-
-    return {
-      module_id: moduleId,
-      status: 'error',
-      tool_calls_used: toolCallCount,
-      summary_markdown: fullText || `[Worker ${moduleId} non completato: ${msg}]`,
-      verified_facts: [],
-      market_data: [],
-      competitor_entries: [],
-      error_message: msg,
-    };
+    if (choice.finish_reason === 'stop' || !choice.message.tool_calls?.length) break;
   }
 
-  // Extract structured JSON from the output (if present)
+  return buildOutput(moduleId, fullText, 0);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function buildOutput(moduleId: ModuleId, fullText: string, queriesRun: number): ModuleOutput {
   let structuredData: string | undefined;
   try {
-    const jsonText = extractJson(fullText);
-    if (jsonText && jsonText !== '{}') {
-      structuredData = jsonText;
-    }
-  } catch {
-    // No JSON found — that's OK
-  }
+    const j = extractJson(fullText);
+    if (j && j !== '{}') structuredData = j;
+  } catch { /* no JSON — ok */ }
 
-  // Parse facts/data/competitors from structured output
   const parsed = tryParseModuleJson(structuredData);
 
   return {
     module_id: moduleId,
-    status: fullText.length > 100 ? 'complete' : 'partial',
-    tool_calls_used: toolCallCount,
+    status: fullText.length > 200 ? 'complete' : 'partial',
+    tool_calls_used: queriesRun, // repurposed: counts Exa queries in Map-Reduce
     summary_markdown: fullText,
     verified_facts: parsed.verified_facts,
     market_data: parsed.market_data,
@@ -152,15 +188,30 @@ export async function runWorker(input: WorkerInput): Promise<ModuleOutput> {
   };
 }
 
-function tryParseModuleJson(jsonStr?: string): Pick<ModuleOutput, 'verified_facts' | 'market_data' | 'competitor_entries'> {
+function emptyOutput(moduleId: ModuleId, errorMessage: string): ModuleOutput {
+  return {
+    module_id: moduleId,
+    status: 'error',
+    tool_calls_used: 0,
+    summary_markdown: `[Worker ${moduleId} non completato: ${errorMessage}]`,
+    verified_facts: [],
+    market_data: [],
+    competitor_entries: [],
+    error_message: errorMessage,
+  };
+}
+
+function tryParseModuleJson(
+  jsonStr?: string
+): Pick<ModuleOutput, 'verified_facts' | 'market_data' | 'competitor_entries'> {
   const empty = { verified_facts: [], market_data: [], competitor_entries: [] };
   if (!jsonStr) return empty;
   try {
-    const parsed = JSON.parse(jsonStr);
+    const p = JSON.parse(jsonStr) as Record<string, unknown>;
     return {
-      verified_facts: Array.isArray(parsed.verified_facts) ? parsed.verified_facts : [],
-      market_data: Array.isArray(parsed.market_data) ? parsed.market_data : [],
-      competitor_entries: Array.isArray(parsed.competitor_entries) ? parsed.competitor_entries : [],
+      verified_facts: Array.isArray(p.verified_facts) ? p.verified_facts : [],
+      market_data: Array.isArray(p.market_data) ? p.market_data : [],
+      competitor_entries: Array.isArray(p.competitor_entries) ? p.competitor_entries : [],
     };
   } catch {
     return empty;

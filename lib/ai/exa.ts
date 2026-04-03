@@ -92,6 +92,61 @@ export async function searchCompetitors(
   }
 }
 
+/**
+ * Execute an array of search queries in parallel batches.
+ * Uses the in-memory cache to deduplicate repeated queries.
+ *
+ * @param queries   Array of search query strings
+ * @param batchSize Concurrent requests per batch (default 8 — safe for Exa rate limits)
+ * @param maxResultsPerQuery Results fetched per query (default 5)
+ */
+export async function batchSearchExa(
+  queries: string[],
+  batchSize = 8,
+  maxResultsPerQuery = 5
+): Promise<ExaResult[]> {
+  const exa = getExa();
+  const allResults: ExaResult[] = [];
+  const deduped = Array.from(new Set(queries.map((q) => q.trim()).filter(Boolean)));
+
+  for (let i = 0; i < deduped.length; i += batchSize) {
+    const batch = deduped.slice(i, i + batchSize);
+
+    const batchResults = await Promise.allSettled(
+      batch.map(async (q) => {
+        const cached = getCached(q, maxResultsPerQuery);
+        if (cached) return cached;
+
+        try {
+          const res = await exa.searchAndContents(q, {
+            type: 'neural',
+            numResults: maxResultsPerQuery,
+            text: { maxCharacters: 2500 },
+            startPublishedDate: getRecentDate(18),
+          });
+          const mapped = (res.results || []).map((r) => ({
+            url: r.url,
+            title: r.title || '',
+            text: r.text || '',
+            publishedDate: r.publishedDate,
+          }));
+          setCached(q, maxResultsPerQuery, mapped);
+          return mapped;
+        } catch (err) {
+          console.error(`[batchSearchExa] query failed: "${q}"`, err);
+          return [] as ExaResult[];
+        }
+      })
+    );
+
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') allResults.push(...r.value);
+    }
+  }
+
+  return allResults;
+}
+
 export function formatExaResultsForPrompt(results: ExaResult[]): string {
   if (results.length === 0) return 'Nessun risultato trovato dalla ricerca web.';
 

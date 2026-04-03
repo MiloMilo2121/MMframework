@@ -16,12 +16,17 @@ import {
   type ContradictionEntry,
 } from '@/lib/types/research-ledger';
 import {
-  WORKER_MARKET_DYNAMICS_SYSTEM,
-  WORKER_COMPETITOR_SYSTEM,
-  WORKER_PRODUCT_TECH_SYSTEM,
-  WORKER_ECONOMICS_SYSTEM,
+  PHASE_A_MARKET_DYNAMICS,
+  PHASE_A_COMPETITOR,
+  PHASE_A_PRODUCT_TECH,
+  PHASE_A_ECONOMICS,
+  PHASE_C_MARKET_DYNAMICS,
+  PHASE_C_COMPETITOR,
+  PHASE_C_PRODUCT_TECH,
+  PHASE_C_ECONOMICS,
   WORKER_CHALLENGER_SYSTEM,
-  buildWorkerUserPrompt,
+  buildWorkerQueryPrompt,
+  buildWorkerExtractPrompt,
   buildChallengerUserPrompt,
 } from '@/lib/ai/prompts/step2-workers';
 import {
@@ -115,27 +120,35 @@ export async function POST(req: NextRequest) {
         const workerResults = await Promise.allSettled([
           runWorker({
             moduleId: 'market_dynamics',
-            systemPrompt: WORKER_MARKET_DYNAMICS_SYSTEM,
-            userPrompt: buildWorkerUserPrompt('market_dynamics', contextSlice),
+            systemPrompt: PHASE_C_MARKET_DYNAMICS,
+            userPrompt: buildWorkerExtractPrompt('market_dynamics', contextSlice),
             model: minerModel,
+            queryGenSystemPrompt: PHASE_A_MARKET_DYNAMICS,
+            queryGenUserPrompt: buildWorkerQueryPrompt('market_dynamics', contextSlice),
           }),
           runWorker({
             moduleId: 'competitor_intelligence',
-            systemPrompt: WORKER_COMPETITOR_SYSTEM,
-            userPrompt: buildWorkerUserPrompt('competitor_intelligence', contextSlice),
+            systemPrompt: PHASE_C_COMPETITOR,
+            userPrompt: buildWorkerExtractPrompt('competitor_intelligence', contextSlice),
             model: minerModel,
+            queryGenSystemPrompt: PHASE_A_COMPETITOR,
+            queryGenUserPrompt: buildWorkerQueryPrompt('competitor_intelligence', contextSlice),
           }),
           runWorker({
             moduleId: 'product_tech',
-            systemPrompt: WORKER_PRODUCT_TECH_SYSTEM,
-            userPrompt: buildWorkerUserPrompt('product_tech', contextSlice),
+            systemPrompt: PHASE_C_PRODUCT_TECH,
+            userPrompt: buildWorkerExtractPrompt('product_tech', contextSlice),
             model: minerModel,
+            queryGenSystemPrompt: PHASE_A_PRODUCT_TECH,
+            queryGenUserPrompt: buildWorkerQueryPrompt('product_tech', contextSlice),
           }),
           runWorker({
             moduleId: 'economics_pricing',
-            systemPrompt: WORKER_ECONOMICS_SYSTEM,
-            userPrompt: buildWorkerUserPrompt('economics_pricing', contextSlice),
+            systemPrompt: PHASE_C_ECONOMICS,
+            userPrompt: buildWorkerExtractPrompt('economics_pricing', contextSlice),
             model: minerModel,
+            queryGenSystemPrompt: PHASE_A_ECONOMICS,
+            queryGenUserPrompt: buildWorkerQueryPrompt('economics_pricing', contextSlice),
           }),
         ]);
 
