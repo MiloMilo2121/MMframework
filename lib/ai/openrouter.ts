@@ -9,6 +9,36 @@ export const openrouter = new OpenAI({
   },
 });
 
+/**
+ * Cognitive Arbitrage — Model Routing Hierarchy
+ *
+ * Tier 1 — MINER (~$0.14-0.30/1M tokens)
+ *   Role: HTML ingestion, query generation, JSON extraction, Memo writing.
+ *   Never writes final report prose. Speed > quality.
+ *   Default: deepseek/deepseek-chat (V3)
+ *   Alt:     google/gemini-2.5-flash
+ *
+ * Tier 2 — ARCHITECT (~$0.55/1M tokens, reasoning model)
+ *   Role: Generates the dynamic chapter index (effort_tier-aware).
+ *   Produces minimal output but requires strong logical reasoning.
+ *   Default: deepseek/deepseek-r1
+ *   Alt:     openai/o3-mini
+ *
+ * Tier 3 — GHOSTWRITER (~$3/1M tokens)
+ *   Role: ONLY model authorized to write final report prose.
+ *   Receives pre-digested Miner memos, never touches raw web data.
+ *   Default: anthropic/claude-sonnet-4-5
+ *   Env override: GHOSTWRITER_MODEL / COHERENCE_MODEL
+ */
+export const MODEL_TIERS = {
+  /** Tier 1 — ingestion, extraction, query gen. Cheap and fast. */
+  MINER: process.env.MINER_MODEL || 'deepseek/deepseek-chat',
+  /** Tier 2 — chapter index generation, structural reasoning. */
+  ARCHITECT: process.env.ARCHITECT_MODEL || 'deepseek/deepseek-r1',
+  /** Tier 3 — final prose writing only. Premium quality, controlled cost. */
+  GHOSTWRITER: process.env.GHOSTWRITER_MODEL || process.env.COHERENCE_MODEL || 'anthropic/claude-sonnet-4-5',
+} as const;
+
 export interface CallOpenRouterOptions {
   model: string;
   systemPrompt?: string;

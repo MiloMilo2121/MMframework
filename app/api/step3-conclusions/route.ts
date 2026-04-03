@@ -38,12 +38,14 @@ export async function POST(req: NextRequest) {
       handoffOperativo: handoffOperativo?.slice(0, 2000),
     });
 
+    // Tier 3 — Ghostwriter: conclusions are final prose, same model as CoherenceGate
     const conclusions = await callOpenRouter({
-      model: process.env.STEP3_MODEL || 'anthropic/claude-4-6-sonnet',
+      model: process.env.STEP3_MODEL || process.env.GHOSTWRITER_MODEL || 'anthropic/claude-sonnet-4-5',
       systemPrompt: STEP3_SYSTEM,
       maxTokens: 8192,
-      temperature: 0.6,
+      temperature: 0.4,
       top_p: 0.9,
+      frequency_penalty: 0.3,
       messages: [{ role: 'user', content: userPrompt }],
     });
 

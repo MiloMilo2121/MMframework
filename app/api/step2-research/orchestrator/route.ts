@@ -68,8 +68,10 @@ export async function POST(req: NextRequest) {
       }, 15000);
 
       try {
-        const minerModel = process.env.MINER_MODEL || 'deepseek/deepseek-r1';
-        const coherenceModel = process.env.COHERENCE_MODEL || process.env.STEP2_MODEL || 'anthropic/claude-opus-4-6';
+        // Tier 1 — Miners: cheap extraction model, never writes prose
+        const minerModel = process.env.MINER_MODEL || 'deepseek/deepseek-chat';
+        // Tier 3 — Ghostwriter: only model that writes the final report
+        const coherenceModel = process.env.GHOSTWRITER_MODEL || process.env.COHERENCE_MODEL || 'anthropic/claude-sonnet-4-5';
 
         // ── Phase A: Build initial ledger ────────────────────────────────────
         send('status', { phase: 'init', message: '🏗️ Costruzione Research Ledger...', step: 'init' });
