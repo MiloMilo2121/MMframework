@@ -18,6 +18,10 @@ export interface CallOpenRouterOptions {
   stream?: boolean;
   thinking?: { type: 'enabled'; budget_tokens: number };
   providerOrder?: string[];
+  temperature?: number;
+  top_p?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
 }
 
 /**
@@ -33,6 +37,10 @@ export async function callOpenRouter(opts: CallOpenRouterOptions): Promise<strin
     maxTokens = 8192,
     thinking,
     providerOrder,
+    temperature,
+    top_p,
+    frequency_penalty,
+    presence_penalty,
   } = opts;
 
   const systemMessages: OpenAI.Chat.ChatCompletionMessageParam[] = systemPrompt
@@ -60,6 +68,10 @@ export async function callOpenRouter(opts: CallOpenRouterOptions): Promise<strin
     model,
     max_tokens: maxTokens,
     messages: [...systemMessages, ...messages],
+    ...(temperature !== undefined && { temperature }),
+    ...(top_p !== undefined && { top_p }),
+    ...(frequency_penalty !== undefined && { frequency_penalty }),
+    ...(presence_penalty !== undefined && { presence_penalty }),
     ...extraBody,
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 

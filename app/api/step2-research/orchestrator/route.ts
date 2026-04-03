@@ -240,6 +240,8 @@ export async function POST(req: NextRequest) {
           const streamResponse = await (openrouter.chat.completions.create({
             model: coherenceModel,
             max_tokens: 64000,
+            temperature: 0.4,
+            frequency_penalty: 0.3,
             stream: true,
             // CoherenceGate doesn't use tools — it only writes
             messages: [

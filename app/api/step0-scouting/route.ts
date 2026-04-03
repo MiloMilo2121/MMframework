@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
       model: process.env.STEP0_MODEL || 'xiaomi/mimo-v2-pro',
       systemPrompt: STEP0_SYSTEM,
       maxTokens: 4096,
+      temperature: 0.1,
+      top_p: 0.1,
+      presence_penalty: -0.5,
       messages: [{ role: 'user', content: userPrompt }],
     });
 

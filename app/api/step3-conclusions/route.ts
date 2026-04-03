@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
       model: process.env.STEP3_MODEL || 'anthropic/claude-4-6-sonnet',
       systemPrompt: STEP3_SYSTEM,
       maxTokens: 8192,
+      temperature: 0.6,
+      top_p: 0.9,
       messages: [{ role: 'user', content: userPrompt }],
     });
 
