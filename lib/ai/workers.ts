@@ -11,7 +11,7 @@
  */
 import { openrouter } from './openrouter';
 import { batchSearchExa, formatExaResultsForPrompt } from './exa';
-import { extractJson } from '@/lib/parsers/extract-json';
+import { extractJson, validateModuleOutputJson, buildZodCorrectionPrompt } from '@/lib/parsers/extract-json';
 import type { ModuleId, ModuleOutput } from '@/lib/types/research-ledger';
 import type OpenAI from 'openai';
 
@@ -105,26 +105,68 @@ async function runMapReduce(input: WorkerInput): Promise<ModuleOutput> {
   console.log(`[Worker ${moduleId}] Phase B: ${rawResults.length} pages fetched (${rawText.length} chars)`);
 
   // ── Phase C: extract structured data ─────────────────────────────────────
-  const extractResponse = await openrouter.chat.completions.create({
+  const extractionParams = {
     model,
     max_tokens: 8000,
     temperature: 0.1,
     top_p: 0.1,
     presence_penalty: -0.5,
-    stream: false,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: `${userPrompt}\n\n${'═'.repeat(60)}\nRAW SEARCH RESULTS (${rawResults.length} pagine da Exa)\n${'═'.repeat(60)}\n${rawText}`,
-      },
-    ],
+    stream: false as const,
+  };
+
+  const extractMessages: OpenAI.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    {
+      role: 'user',
+      content: `${userPrompt}\n\n${'═'.repeat(60)}\nRAW SEARCH RESULTS (${rawResults.length} pagine da Exa)\n${'═'.repeat(60)}\n${rawText}`,
+    },
+  ];
+
+  let extractResponse = await openrouter.chat.completions.create({
+    ...extractionParams,
+    messages: extractMessages,
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
 
-  const fullText = extractResponse.choices?.[0]?.message?.content || '';
+  let fullText = extractResponse.choices?.[0]?.message?.content || '';
   console.log(`[Worker ${moduleId}] Phase C: ${fullText.length} chars extracted`);
 
-  return buildOutput(moduleId, fullText, cappedQueries.length);
+  // ── Zod validation + single auto-correction attempt ───────────────────────
+  let validation = validateModuleOutputJson(fullText);
+
+  if (validation.zodErrors && validation.rawJson) {
+    console.warn(`[Worker ${moduleId}] Zod validation failed (${validation.zodErrors.issues.length} issues) — auto-correcting...`);
+    const correctionPrompt = buildZodCorrectionPrompt(validation.zodErrors, validation.rawJson);
+
+    const correctionMessages: OpenAI.ChatCompletionMessageParam[] = [
+      ...extractMessages,
+      { role: 'assistant', content: fullText },
+      { role: 'user', content: correctionPrompt },
+    ];
+
+    const correctionResponse = await openrouter.chat.completions.create({
+      ...extractionParams,
+      messages: correctionMessages,
+    } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
+
+    const correctedText = correctionResponse.choices?.[0]?.message?.content || '';
+    if (correctedText) {
+      fullText = correctedText;
+      validation = validateModuleOutputJson(fullText);
+      console.log(`[Worker ${moduleId}] Auto-correction result: ${validation.zodErrors ? 'still invalid (using soft data)' : 'valid ✓'}`);
+    }
+  }
+
+  return {
+    module_id: moduleId,
+    status: validation.data ? 'complete' : 'partial',
+    tool_calls_used: cappedQueries.length,
+    summary_markdown: fullText,
+    // Cast: Zod passthrough infers wider types than our interfaces, shape is identical
+    verified_facts:    (validation.data?.verified_facts    ?? []) as ModuleOutput['verified_facts'],
+    market_data:       (validation.data?.market_data       ?? []) as ModuleOutput['market_data'],
+    competitor_entries:(validation.data?.competitor_entries ?? []) as ModuleOutput['competitor_entries'],
+    structured_data: validation.rawJson ?? undefined,
+  };
 }
 
 // ── Legacy tool-call loop (used for Challenger) ───────────────────────────────
