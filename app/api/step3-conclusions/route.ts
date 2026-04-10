@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     });
 
     const conclusions = await callOpenRouter({
-      model: process.env.STEP3_MODEL || 'anthropic/claude-4-6-sonnet',
+      model: process.env.STEP3_MODEL || 'anthropic/claude-sonnet-4-6',
       systemPrompt: STEP3_SYSTEM,
       maxTokens: 8192,
       temperature: 0.6,
