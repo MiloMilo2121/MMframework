@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function CostMeter({ cost, capUsd }: Props) {
-  const pct = Math.min(100, (cost.totalUsd / capUsd) * 100);
+  const pct = capUsd > 0 ? Math.min(100, (cost.totalUsd / capUsd) * 100) : 0;
   const isNearCap = pct >= 80;
   const isOverCap = pct >= 95;
 

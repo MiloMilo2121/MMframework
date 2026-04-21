@@ -55,6 +55,7 @@ export function Step5Research({ analysisId }: Props) {
   const [chapterStatusMap, setChapterStatusMap] = useState<Record<number, 'pending' | 'writing' | 'done' | 'error'>>({});
   const [cost, setCostLocal] = useState<CostSnapshot | null>(null);
   const startTimeRef = useRef(Date.now());
+  const completedWorkersRef = useRef(0);
 
   const addLog = useCallback((message: string, type?: string) => {
     const ts = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -157,12 +158,13 @@ export function Step5Research({ analysisId }: Props) {
       if (wId && wStatus) {
         updateWorker(wId, { status: wStatus, toolCalls: typeof data.toolCalls === 'number' ? data.toolCalls : undefined });
         const label = WORKER_LABELS[wId] || wId;
-        if (wStatus === 'complete') addLog(`✓ ${label} — ${data.toolCalls || 0} ricerche`);
-        else if (wStatus === 'running') addLog(`⚡ ${label} avviato`);
+        if (wStatus === 'complete') {
+          completedWorkersRef.current++;
+          addLog(`✓ ${label} — ${data.toolCalls || 0} ricerche`);
+        } else if (wStatus === 'running') addLog(`⚡ ${label} avviato`);
         else if (wStatus === 'error') addLog(`✗ ${label}: ${String(data.message || 'errore')}`, 'error');
       }
-      const completedCount = workers.filter((w) => w.status === 'complete').length;
-      setOrchestratorProgress(Math.min(35, completedCount * 7));
+      setOrchestratorProgress(Math.min(35, completedWorkersRef.current * 7));
     }
 
     if (eventType === 'chapter_index') {
@@ -197,7 +199,11 @@ export function Step5Research({ analysisId }: Props) {
       setCostLocal(snap);
       setCost(analysisId, snap);
     }
-  }, [updateWorker, addLog, workers, analysisId, setChapterSpecs, upsertChapter, setCost]);
+
+    if (eventType === 'cost_exceeded') {
+      addLog(`⛔ Budget superato: $${(data.totalUsd as number).toFixed(3)} / $${data.capUsd} — generazione interrotta`, 'warning');
+    }
+  }, [updateWorker, addLog, analysisId, setChapterSpecs, upsertChapter, setCost]);
 
   const orchestratorBody = {
     clientSnapshot: JSON.stringify(analysis?.clientSnapshot || {}),

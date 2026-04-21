@@ -30,9 +30,11 @@ export function StreamingText({
   const containerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const startedRef = useRef(false);
+  const isStreamingRef = useRef(false); // ref-based guard prevents race condition
 
   const startStream = useCallback(async () => {
-    if (isStreaming) return;
+    if (isStreamingRef.current) return;
+    isStreamingRef.current = true;
 
     abortRef.current = new AbortController();
     setIsStreaming(true);
@@ -55,6 +57,7 @@ export function StreamingText({
       let buffer = '';
 
       while (true) {
+        if (abortRef.current?.signal.aborted) break;
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -116,9 +119,11 @@ export function StreamingText({
       if (err instanceof Error && err.name !== 'AbortError') {
         onError?.(err.message);
       }
+    } finally {
+      isStreamingRef.current = false;
       setIsStreaming(false);
     }
-  }, [url, body, onChapter, onComplete, onError, onStatus, onWarning, onRawEvent, isStreaming]);
+  }, [url, body, onChapter, onComplete, onError, onStatus, onWarning, onRawEvent]);
 
   // Auto-scroll
   useEffect(() => {

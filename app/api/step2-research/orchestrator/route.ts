@@ -75,6 +75,14 @@ export async function POST(req: NextRequest) {
         const minerModel = process.env.MINER_MODEL || 'deepseek/deepseek-r1';
         const coherenceModel = process.env.COHERENCE_MODEL || process.env.STEP2_MODEL || 'anthropic/claude-opus-4-6';
 
+        // Cost tracker created early — tracks ALL phases from workers onward
+        const tier = ([1, 2, 3, 4].includes(body.effort_tier as number) ? body.effort_tier as EffortTier : 2);
+        const tierConfig = TIER_CONFIG[tier];
+        const costTracker = new CostTracker(tier);
+        const trackCost = (model: string, usage: { prompt_tokens?: number; completion_tokens?: number } | null | undefined, phase: string) => {
+          costTracker.add(model, usage, phase);
+        };
+
         // ── Phase A: Build initial ledger ────────────────────────────────────
         send('status', { phase: 'init', message: '🏗️ Costruzione Research Ledger...', step: 'init' });
 
@@ -129,6 +137,7 @@ export async function POST(req: NextRequest) {
             model: minerModel,
             queryGenSystemPrompt: PHASE_A_MARKET_DYNAMICS,
             queryGenUserPrompt: buildWorkerQueryPrompt('market_dynamics', contextSlice),
+            onCost: trackCost,
           }),
           runWorker({
             moduleId: 'competitor_intelligence',
@@ -137,6 +146,7 @@ export async function POST(req: NextRequest) {
             model: minerModel,
             queryGenSystemPrompt: PHASE_A_COMPETITOR,
             queryGenUserPrompt: buildWorkerQueryPrompt('competitor_intelligence', contextSlice),
+            onCost: trackCost,
           }),
           runWorker({
             moduleId: 'product_tech',
@@ -145,6 +155,7 @@ export async function POST(req: NextRequest) {
             model: minerModel,
             queryGenSystemPrompt: PHASE_A_PRODUCT_TECH,
             queryGenUserPrompt: buildWorkerQueryPrompt('product_tech', contextSlice),
+            onCost: trackCost,
           }),
           runWorker({
             moduleId: 'economics_pricing',
@@ -153,6 +164,7 @@ export async function POST(req: NextRequest) {
             model: minerModel,
             queryGenSystemPrompt: PHASE_A_ECONOMICS,
             queryGenUserPrompt: buildWorkerQueryPrompt('economics_pricing', contextSlice),
+            onCost: trackCost,
           }),
         ]);
 
@@ -191,6 +203,7 @@ export async function POST(req: NextRequest) {
           systemPrompt: WORKER_CHALLENGER_SYSTEM,
           userPrompt: buildChallengerUserPrompt(contextSlice, w1, w2, w3, w4),
           model: minerModel,
+          onCost: trackCost,
         });
 
         mergeLedger(ledger, challengerOutput);
@@ -213,12 +226,9 @@ export async function POST(req: NextRequest) {
           toolCalls: challengerOutput.tool_calls_used,
           contradictions: ledger.contradictions_log.length,
         });
+        send('cost_update', costTracker.snapshot());
 
         // ── Phase C: Architect + Ghostwriter ────────────────────────────────
-        const tier = (([1, 2, 3, 4].includes(body.effort_tier ?? 0) ? body.effort_tier : 2) ?? 2) as EffortTier;
-        const tierConfig = TIER_CONFIG[tier];
-        const costTracker = new CostTracker(tier);
-
         send('status', {
           phase: 'architect',
           message: `🏗️ Architect: generazione indice editoriale (Tier ${tier} — ${tierConfig.label})...`,
@@ -328,6 +338,22 @@ export async function POST(req: NextRequest) {
                 message: `⚠️ Cap ${spec.number} fallito: ${error}`,
                 code: 'CHAPTER_ERROR',
               });
+            },
+            onCost: (model, usage, phase) => {
+              trackCost(model, usage, phase);
+              const snap = costTracker.snapshot();
+              send('cost_update', snap);
+            },
+            shouldStop: () => {
+              if (costTracker.isOverBudget()) {
+                send('cost_exceeded', {
+                  totalUsd: costTracker.snapshot().totalUsd,
+                  capUsd: costTracker.capUsd(),
+                  message: `Budget Tier ${tier} ($${costTracker.capUsd()}) superato — generazione interrotta`,
+                });
+                return true;
+              }
+              return false;
             },
           }
         );

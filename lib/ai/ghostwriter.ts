@@ -36,6 +36,10 @@ export interface GhostwriterCallbacks {
   onChapterStart: (spec: ChapterSpec) => void;
   onChapterComplete: (spec: ChapterSpec, text: string) => void;
   onChapterError: (spec: ChapterSpec, error: string) => void;
+  /** Called after each LLM call with token usage for cost tracking */
+  onCost?: (model: string, usage: { prompt_tokens?: number; completion_tokens?: number } | null | undefined, phase: string) => void;
+  /** Return true to halt chapter writing (budget kill-switch) */
+  shouldStop?: () => boolean;
 }
 
 /**
@@ -52,6 +56,12 @@ export async function writeChaptersBatched(
   let previousSummary = '';
 
   for (let i = 0; i < chapters.length; i += GHOSTWRITER_BATCH_SIZE) {
+    // Kill-switch: stop if budget exceeded
+    if (callbacks.shouldStop?.()) {
+      console.warn('[Ghostwriter] Budget kill-switch triggered — stopping chapter generation');
+      break;
+    }
+
     const batch = chapters.slice(i, i + GHOSTWRITER_BATCH_SIZE);
     const summaryForBatch = previousSummary; // all chapters BEFORE this batch
 
@@ -96,13 +106,17 @@ async function writeChapterWithRetry(
   callbacks.onChapterStart(spec);
   const ledgerSlice = extractLedgerSlice(spec, ledger);
 
-  let text = await callChapterApi(spec, ledger, model, previousSummary, ledgerSlice, false);
+  let text = await callChapterApi(spec, model, previousSummary, ledgerSlice, false, callbacks);
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   const floor = Math.floor(spec.target_word_count * WORD_COUNT_FLOOR);
 
   if (wordCount < floor || text.trim().length === 0) {
     const retryPrompt = `ESPANDI — il testo prodotto (${wordCount} parole) è sotto il minimo richiesto (${floor} parole). Scrivi almeno ${spec.target_word_count} parole. Aggiungi dati concreti, esempi, analisi più profonda.`;
-    const retryText = await callChapterApi(spec, ledger, model, previousSummary, ledgerSlice, true, retryPrompt).catch(() => '');
+    const retryText = await callChapterApi(spec, model, previousSummary, ledgerSlice, true, callbacks, retryPrompt)
+      .catch((err) => {
+        console.warn(`[Ghostwriter] Retry failed for cap ${spec.number}: ${err instanceof Error ? err.message : 'unknown'}`);
+        return '';
+      });
     if (retryText.trim().length > text.trim().length) text = retryText;
   }
 
@@ -112,11 +126,11 @@ async function writeChapterWithRetry(
 
 async function callChapterApi(
   spec: ChapterSpec,
-  _ledger: ResearchLedger,
   model: string,
   previousSummary: string,
   ledgerSlice: string,
   isRetry: boolean,
+  callbacks: GhostwriterCallbacks,
   retryPrefix?: string
 ): Promise<string> {
   const userPrompt = buildChapterPrompt(spec, ledgerSlice, previousSummary, retryPrefix);
@@ -138,6 +152,7 @@ async function callChapterApi(
       ],
     } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
 
+    callbacks.onCost?.(model, response.usage, `ghostwriter/cap_${spec.number}${isRetry ? '_retry' : ''}`);
     return (response.choices?.[0]?.message?.content as string) || '';
   })();
 

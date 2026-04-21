@@ -34,6 +34,8 @@ export interface WorkerInput {
   queryGenSystemPrompt?: string;
   /** Phase A: user prompt for query generation (Map-Reduce path) */
   queryGenUserPrompt?: string;
+  /** Optional cost tracking callback — called after each LLM call */
+  onCost?: (model: string, usage: { prompt_tokens?: number; completion_tokens?: number } | null | undefined, phase: string) => void;
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -61,7 +63,7 @@ export async function runWorker(input: WorkerInput): Promise<ModuleOutput> {
 
 // ── Map-Reduce path ───────────────────────────────────────────────────────────
 async function runMapReduce(input: WorkerInput): Promise<ModuleOutput> {
-  const { moduleId, model, queryGenSystemPrompt, queryGenUserPrompt, systemPrompt, userPrompt } = input;
+  const { moduleId, model, queryGenSystemPrompt, queryGenUserPrompt, systemPrompt, userPrompt, onCost } = input;
 
   // ── Phase A: generate query list ─────────────────────────────────────────
   const queryResponse = await openrouter.chat.completions.create({
@@ -75,6 +77,7 @@ async function runMapReduce(input: WorkerInput): Promise<ModuleOutput> {
       { role: 'user', content: queryGenUserPrompt! },
     ],
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
+  onCost?.(model, queryResponse.usage, `${moduleId}/phase_a`);
 
   let queries: string[] = [];
   const queryRaw = queryResponse.choices?.[0]?.message?.content || '';
@@ -126,6 +129,7 @@ async function runMapReduce(input: WorkerInput): Promise<ModuleOutput> {
     ...extractionParams,
     messages: extractMessages,
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
+  onCost?.(model, extractResponse.usage, `${moduleId}/phase_c`);
 
   let fullText = extractResponse.choices?.[0]?.message?.content || '';
   console.log(`[Worker ${moduleId}] Phase C: ${fullText.length} chars extracted`);
@@ -147,6 +151,7 @@ async function runMapReduce(input: WorkerInput): Promise<ModuleOutput> {
       ...extractionParams,
       messages: correctionMessages,
     } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
+    onCost?.(model, correctionResponse.usage, `${moduleId}/phase_c_correction`);
 
     const correctedText = correctionResponse.choices?.[0]?.message?.content || '';
     if (correctedText) {
@@ -171,7 +176,7 @@ async function runMapReduce(input: WorkerInput): Promise<ModuleOutput> {
 
 // ── Legacy tool-call loop (used for Challenger) ───────────────────────────────
 async function runToolCallLoop(input: WorkerInput): Promise<ModuleOutput> {
-  const { moduleId, model, systemPrompt, userPrompt } = input;
+  const { moduleId, model, systemPrompt, userPrompt, onCost } = input;
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: 'user', content: userPrompt },
@@ -195,6 +200,8 @@ async function runToolCallLoop(input: WorkerInput): Promise<ModuleOutput> {
         ...messages,
       ],
     } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;
+
+    onCost?.(model, response.usage, `${moduleId}/challenger`);
 
     const choice = response.choices?.[0];
     if (!choice) break;

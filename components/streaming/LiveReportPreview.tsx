@@ -1,22 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { marked } from 'marked';
 import type { ChapterEntry } from '@/lib/types/analysis';
 
 interface Props {
   chapters: Record<number, ChapterEntry>;
   autoScroll?: boolean;
-}
-
-function renderMarkdown(text: string): string {
-  return text
-    .replace(/^## (.+)$/gm, '<h2 class="text-base font-bold mt-4 mb-2" style="color:var(--accent-deepest)">$1</h2>')
-    .replace(/^### (.+)$/gm, '<h3 class="text-sm font-semibold mt-3 mb-1" style="color:var(--text-primary)">$1</h3>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^- (.+)$/gm, '<li class="ml-4 text-xs list-disc">$1</li>')
-    .replace(/(<li.*<\/li>\n?)+/g, '<ul class="space-y-0.5 my-1.5">$&</ul>')
-    .replace(/\n\n/g, '</p><p class="text-xs leading-relaxed mb-2">')
-    .replace(/^(?!<[h|u|l])(.+)$/gm, '<p class="text-xs leading-relaxed mb-1">$1</p>');
 }
 
 export function LiveReportPreview({ chapters, autoScroll = true }: Props) {
@@ -97,7 +87,7 @@ export function LiveReportPreview({ chapters, autoScroll = true }: Props) {
             <div
               className="text-xs leading-relaxed"
               style={{ color: 'var(--text-primary)' }}
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(ch.text) }}
+              dangerouslySetInnerHTML={{ __html: marked.parse(ch.text, { breaks: true }) as string }}
             />
             <p className="text-[10px] mt-2" style={{ color: 'var(--text-secondary)' }}>
               {ch.wordCount.toLocaleString()} parole

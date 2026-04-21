@@ -38,12 +38,22 @@ export interface ChapterSpec {
  * Guarantee the last spec is always HANDOFF_OPERATIVO regardless of LLM output.
  */
 export function enforceHandoffOperativo(specs: ChapterSpec[], targetWordCount = 500): ChapterSpec[] {
+  if (specs.length === 0) {
+    return [{
+      number: 1,
+      title: 'HANDOFF_OPERATIVO',
+      focus_instructions: 'Scrivi SOLO il JSON HANDOFF_OPERATIVO strutturato con tutti i campi richiesti. Nient\'altro.',
+      required_data_points: ['tutte le decisioni strategiche', 'roadmap', 'messaggi chiave', 'test immediati'],
+      target_word_count: targetWordCount,
+      ledger_sections: ['all'],
+    }];
+  }
   const lastSpec = specs[specs.length - 1];
-  if (lastSpec?.title?.toUpperCase().includes('HANDOFF')) return specs;
+  if (lastSpec.title.toUpperCase().includes('HANDOFF')) return specs;
   return [
     ...specs,
     {
-      number: (specs[specs.length - 1]?.number ?? specs.length) + 1,
+      number: lastSpec.number + 1,
       title: 'HANDOFF_OPERATIVO',
       focus_instructions: 'Scrivi SOLO il JSON HANDOFF_OPERATIVO strutturato con tutti i campi richiesti. Nient\'altro.',
       required_data_points: ['tutte le decisioni strategiche', 'roadmap', 'messaggi chiave', 'test immediati'],
