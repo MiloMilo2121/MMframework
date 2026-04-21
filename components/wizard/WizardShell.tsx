@@ -5,6 +5,7 @@ import { Step1ClientData } from './steps/Step1ClientData';
 import { Step2Scouting } from './steps/Step2Scouting';
 import { Step3Questionnaire } from './steps/Step3Questionnaire';
 import { Step4Blueprint } from './steps/Step4Blueprint';
+import { Step4BisTierSelector } from './steps/Step4BisTierSelector';
 import { Step5Research } from './steps/Step5Research';
 
 const STEP_LABELS = [
@@ -12,6 +13,7 @@ const STEP_LABELS = [
   'Scouting',
   'Questionario',
   'Blueprint',
+  'Tier',
   'Deep Research',
 ];
 
@@ -25,7 +27,7 @@ export function WizardShell() {
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--surface)' }}>
       {/* Step indicator */}
       <div className="border-b bg-white sticky top-16 z-40">
-        <div className="max-w-4xl mx-auto px-6 py-4">
+        <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center gap-0">
             {STEP_LABELS.map((label, i) => {
               const step = i + 1;
@@ -63,7 +65,7 @@ export function WizardShell() {
                   </div>
                   {i < STEP_LABELS.length - 1 && (
                     <div
-                      className="w-8 h-px mx-2"
+                      className="w-6 h-px mx-2"
                       style={{ backgroundColor: isDone ? 'var(--accent-primary)' : '#E5E7EB' }}
                     />
                   )}
@@ -75,7 +77,7 @@ export function WizardShell() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 max-w-4xl mx-auto w-full px-6 py-8">
+      <div className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
         {currentStep === 1 && (
           <Step1ClientData
             onNext={(id) => {
@@ -112,6 +114,13 @@ export function WizardShell() {
         )}
 
         {currentStep === 5 && analysisId && (
+          <Step4BisTierSelector
+            analysisId={analysisId}
+            onNext={() => setCurrentStep(6)}
+          />
+        )}
+
+        {currentStep === 6 && analysisId && (
           <Step5Research analysisId={analysisId} />
         )}
       </div>

@@ -3,12 +3,10 @@
  *
  * Phase A: Build ResearchLedger from client context
  * Phase B: Promise.allSettled — 4 Miner Workers in parallel + 1 Challenger
- * Phase C: CoherenceGate — claude-opus-4-6 writes the final report (streaming)
+ * Phase C: Architect + Ghostwriter — generates chapter index then writes in parallel batches
  */
 import { NextRequest } from 'next/server';
 import { openrouter } from '@/lib/ai/openrouter';
-import { MAX_TOOL_CALLS, type ToolName } from '@/lib/ai/tools';
-import { executeTool } from '@/lib/ai/tool-executor';
 import { runWorker } from '@/lib/ai/workers';
 import {
   createEmptyLedger,
@@ -29,14 +27,19 @@ import {
   buildWorkerExtractPrompt,
   buildChallengerUserPrompt,
 } from '@/lib/ai/prompts/step2-workers';
+import { writeChaptersBatched } from '@/lib/ai/ghostwriter';
 import {
-  COHERENCE_GATE_SYSTEM,
-  buildCoherenceGateUserPrompt,
-} from '@/lib/ai/prompts/step2-coherence';
+  type ChapterSpec,
+  buildArchitectPrompt,
+  enforceHandoffOperativo,
+  TIER_CONFIG,
+  ARCHITECT_SYSTEM,
+  type EffortTier,
+} from '@/lib/ai/prompts/architect';
+import { CostTracker } from '@/lib/ai/cost-tracker';
 import { parseHandoffOperativo } from '@/lib/parsers/parse-handoff';
 import { extractContextBridge } from '@/lib/parsers/parse-report';
 import { healResponse } from '@/lib/ai/response-healing';
-import type OpenAI from 'openai';
 
 export const maxDuration = 300;
 
@@ -47,6 +50,7 @@ export async function POST(req: NextRequest) {
     questionnaire?: string;
     materials?: string;
     analysisId?: string;
+    effort_tier?: number;
   };
 
   const encoder = new TextEncoder();
@@ -210,156 +214,132 @@ export async function POST(req: NextRequest) {
           contradictions: ledger.contradictions_log.length,
         });
 
+        // ── Phase C: Architect + Ghostwriter ────────────────────────────────
+        const tier = (([1, 2, 3, 4].includes(body.effort_tier ?? 0) ? body.effort_tier : 2) ?? 2) as EffortTier;
+        const tierConfig = TIER_CONFIG[tier];
+        const costTracker = new CostTracker(tier);
+
         send('status', {
-          phase: 'coherence',
-          message: `🧠 Avvio CoherenceGate con ${coherenceModel}... (${ledger.verified_facts.length} fatti, ${ledger.competitor_matrix.length} competitor)`,
-          step: 'coherence_start',
+          phase: 'architect',
+          message: `🏗️ Architect: generazione indice editoriale (Tier ${tier} — ${tierConfig.label})...`,
+          step: 'architect_start',
         });
 
-        // ── Phase C: CoherenceGate streaming ────────────────────────────────
-        const ledgerJson = JSON.stringify(ledger, null, 2);
-        const coherenceUserPrompt = buildCoherenceGateUserPrompt({
+        // Build ledger summary for architect
+        const ledgerSummary = [
+          ledger.modules.market_dynamics?.summary_markdown?.slice(0, 1000) || '',
+          ledger.modules.competitor_intelligence?.summary_markdown?.slice(0, 1000) || '',
+          ledger.modules.product_tech?.summary_markdown?.slice(0, 500) || '',
+          ledger.modules.economics_pricing?.summary_markdown?.slice(0, 500) || '',
+          `Fatti verificati: ${ledger.verified_facts.length} | Competitor: ${ledger.competitor_matrix.length}`,
+        ].filter(Boolean).join('\n\n');
+
+        const architectModel = process.env.STEP1_MODEL || 'anthropic/claude-opus-4-6';
+
+        const architectPrompt = buildArchitectPrompt({
           clientName,
           sector,
           geography,
-          handoffData1: body.handoffData1 || '',
-          ledgerJson,
+          tier,
+          ledgerSummary,
+          handoffData1Excerpt: body.handoffData1 || '',
         });
 
-        const coherenceMessages: OpenAI.ChatCompletionMessageParam[] = [
-          { role: 'user', content: coherenceUserPrompt },
-        ];
+        const architectResponse = await openrouter.chat.completions.create({
+          model: architectModel,
+          max_tokens: 8000,
+          temperature: 0.3,
+          stream: false,
+          messages: [
+            { role: 'system', content: ARCHITECT_SYSTEM },
+            { role: 'user', content: architectPrompt },
+          ],
+        });
 
-        let fullText = '';
-        let toolCallCount = 0;
-        let iterationCount = 0;
-        const MAX_ITERATIONS = 30;
-        let currentChapter = 'Avvio CoherenceGate...';
-
-        // CoherenceGate uses streaming (same pattern as part1/route.ts)
-        while (iterationCount < MAX_ITERATIONS && toolCallCount < MAX_TOOL_CALLS) {
-          iterationCount++;
-
-          const toolCallAccumulator: Array<{
-            index: number;
-            id: string;
-            name: string;
-            arguments: string;
-          }> = [];
-
-          let finishReason = '';
-          let iterationText = '';
-
-          const streamResponse = await (openrouter.chat.completions.create({
-            model: coherenceModel,
-            max_tokens: 64000,
-            temperature: 0.4,
-            frequency_penalty: 0.3,
-            stream: true,
-            // CoherenceGate doesn't use tools — it only writes
-            messages: [
-              {
-                role: 'system',
-                content: [
-                  { type: 'text', text: COHERENCE_GATE_SYSTEM, cache_control: { type: 'ephemeral' } },
-                ] as unknown as string,
-              },
-              ...coherenceMessages,
-            ],
-          } as Parameters<typeof openrouter.chat.completions.create>[0]) as Promise<
-            AsyncIterable<{
-              choices: Array<{
-                delta: {
-                  content?: string | null;
-                  tool_calls?: Array<{
-                    index: number;
-                    id?: string;
-                    type?: string;
-                    function?: { name?: string; arguments?: string };
-                  }>;
-                };
-                finish_reason?: string | null;
-              }>;
-            }>
-          >);
-
-          for await (const chunk of streamResponse) {
-            const choice = chunk.choices?.[0];
-            if (!choice) continue;
-
-            const delta = choice.delta;
-
-            if (typeof delta.content === 'string' && delta.content) {
-              iterationText += delta.content;
-              fullText += delta.content;
-              send('chunk', { text: delta.content });
-
-              const matches = fullText.match(/^## (CAP\s+\d+[^#\n]*|EXECUTIVE SUMMARY[^\n]*)/gm);
-              if (matches && matches.length > 0) {
-                const latest = matches[matches.length - 1].replace(/^## /, '');
-                if (latest !== currentChapter) {
-                  currentChapter = latest;
-                  send('chapter', { chapter: currentChapter });
-                  send('status', {
-                    phase: 'coherence',
-                    message: `✍️ Scrivendo: ${currentChapter.slice(0, 60)}`,
-                    step: 'writing',
-                  });
-                }
-              }
-            }
-
-            if (delta.tool_calls && delta.tool_calls.length > 0) {
-              for (const tcDelta of delta.tool_calls) {
-                const idx = tcDelta.index ?? 0;
-                if (!toolCallAccumulator[idx]) {
-                  toolCallAccumulator[idx] = { index: idx, id: '', name: '', arguments: '' };
-                }
-                if (tcDelta.id) toolCallAccumulator[idx].id = tcDelta.id;
-                if (tcDelta.function?.name) toolCallAccumulator[idx].name += tcDelta.function.name;
-                if (tcDelta.function?.arguments) toolCallAccumulator[idx].arguments += tcDelta.function.arguments;
-              }
-            }
-
-            if (choice.finish_reason) finishReason = choice.finish_reason;
-          }
-
-          const pendingToolCalls = toolCallAccumulator.filter((tc) => tc && tc.name);
-
-          if (
-            (finishReason === 'tool_calls' || finishReason === 'tool_use' || pendingToolCalls.length > 0) &&
-            toolCallCount < MAX_TOOL_CALLS
-          ) {
-            const assistantMsg: OpenAI.ChatCompletionMessageParam = {
-              role: 'assistant',
-              content: iterationText || null,
-              tool_calls: pendingToolCalls.map((tc) => ({
-                id: tc.id || `call_${tc.index}`,
-                type: 'function' as const,
-                function: { name: tc.name, arguments: tc.arguments },
-              })),
-            };
-            coherenceMessages.push(assistantMsg);
-
-            const toolResultMessages: OpenAI.ChatCompletionMessageParam[] = [];
-            for (const tc of pendingToolCalls) {
-              toolCallCount++;
-              let toolArgs: Record<string, unknown> = {};
-              try { toolArgs = JSON.parse(tc.arguments || '{}'); } catch { /* ok */ }
-
-              const result = await executeTool(tc.name as ToolName, toolArgs);
-              toolResultMessages.push({
-                role: 'tool',
-                tool_call_id: tc.id || `call_${tc.index}`,
-                content: result,
-              } as OpenAI.ChatCompletionMessageParam);
-            }
-            coherenceMessages.push(...toolResultMessages);
-            continue;
-          }
-
-          break;
+        let chapterSpecs: ChapterSpec[] = [];
+        const architectResponse2 = architectResponse as { choices?: Array<{ message?: { content?: string | null }; }>, usage?: { prompt_tokens?: number; completion_tokens?: number } };
+        const architectRaw = architectResponse2.choices?.[0]?.message?.content || '[]';
+        costTracker.add(architectModel, architectResponse2.usage, 'architect');
+        try {
+          const cleaned = architectRaw.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+          chapterSpecs = JSON.parse(cleaned) as ChapterSpec[];
+        } catch {
+          send('warning', { message: '⚠️ Architect JSON parse error — fallback a struttura minima', code: 'ARCHITECT_PARSE_ERROR' });
+          chapterSpecs = [];
         }
+
+        if (chapterSpecs.length === 0) {
+          chapterSpecs = Array.from({ length: tierConfig.chapterCount }, (_, i) => ({
+            number: i + 1,
+            title: `CAP ${i + 1} — Analisi ${clientName}`,
+            focus_instructions: `Analizza il settore ${sector} per ${clientName}. Usa i dati del ledger.`,
+            required_data_points: ['market_data', 'competitor_matrix'],
+            target_word_count: tierConfig.wordsPerChapter,
+            ledger_sections: ['all'] as ChapterSpec['ledger_sections'],
+          }));
+        }
+
+        // Guarantee HANDOFF_OPERATIVO as last chapter
+        chapterSpecs = enforceHandoffOperativo(chapterSpecs, 500);
+
+        send('chapter_index', { chapters: chapterSpecs, tier });
+        send('cost_update', costTracker.snapshot());
+        send('status', {
+          phase: 'ghostwriter',
+          message: `✍️ Ghostwriter: scrittura ${chapterSpecs.length} capitoli in batch di 4...`,
+          step: 'ghostwriter_start',
+        });
+
+        const chapterStartTimes: Record<number, number> = {};
+
+        // Write chapters in parallel batches
+        const chapterTexts = await writeChaptersBatched(
+          chapterSpecs,
+          ledger,
+          coherenceModel,
+          {
+            onChapterStart: (spec) => {
+              chapterStartTimes[spec.number] = Date.now();
+              send('chapter_start', { number: spec.number, title: spec.title });
+              send('status', {
+                phase: 'ghostwriter',
+                message: `✍️ Scrivendo: CAP ${spec.number} — ${spec.title.slice(0, 50)}`,
+                step: 'writing',
+              });
+            },
+            onChapterComplete: (spec, text) => {
+              const durationMs = Date.now() - (chapterStartTimes[spec.number] ?? Date.now());
+              const wordCount = text.split(/\s+/).filter(Boolean).length;
+              send('chapter_complete', {
+                number: spec.number,
+                title: spec.title,
+                text,
+                wordCount,
+                durationMs,
+              });
+              // Legacy events for compatibility
+              send('chapter', { chapter: spec.title, number: spec.number });
+              send('chunk', { text: `## ${spec.title}\n\n${text}\n\n` });
+              const costSnap = costTracker.snapshot();
+              send('cost_update', costSnap);
+            },
+            onChapterError: (spec, error) => {
+              send('warning', {
+                message: `⚠️ Cap ${spec.number} fallito: ${error}`,
+                code: 'CHAPTER_ERROR',
+              });
+            },
+          }
+        );
+
+        // Assemble full text
+        let fullText = chapterTexts
+          .map((text, idx) => {
+            const spec = chapterSpecs[idx];
+            if (!spec) return text;
+            return `## ${spec.title}\n\n${text}`;
+          })
+          .join('\n\n---\n\n');
 
         // Healing if needed
         if (!fullText.includes('HANDOFF_OPERATIVO') && !fullText.includes('handoff_operativo')) {
@@ -369,20 +349,25 @@ export async function POST(req: NextRequest) {
 
         const { data: handoffOperativo } = parseHandoffOperativo(fullText);
         const wordCount = fullText.split(/\s+/).length;
-        const chaptersFound = (fullText.match(/^## CAP\s+\d+/gm) || []).length;
+        const chaptersFound = chapterTexts.filter((t) => t && !t.startsWith('[Capitolo non generato')).length;
         const contextBridge = extractContextBridge(fullText);
 
+        const finalCost = costTracker.snapshot();
+        send('cost_update', finalCost);
         send('complete', {
           fullText,
           contextBridge,
           handoffOperativo,
           wordCount,
           chaptersFound,
-          toolCallsUsed: toolCallCount,
+          toolCallsUsed: 0,
           workersCompleted: completedWorkers,
           factsGathered: ledger.verified_facts.length,
           competitorsFound: ledger.competitor_matrix.length,
           contradictionsResolved: ledger.contradictions_log.length,
+          cost: finalCost,
+          tier,
+          chapterSpecs,
         });
 
       } catch (err) {

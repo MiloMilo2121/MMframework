@@ -6,6 +6,19 @@ export type AnalysisStatus =
   | 'complete'
   | 'error';
 
+export interface ChapterEntry {
+  title: string;
+  text: string;
+  wordCount: number;
+  status: 'pending' | 'writing' | 'done' | 'error';
+}
+
+export interface CostSnapshot {
+  totalUsd: number;
+  byPhase: Record<string, number>;
+  tokens: number;
+}
+
 export interface ClientSnapshot {
   client_name: string;
   website: string;
@@ -52,4 +65,9 @@ export interface Analysis {
   handoffOperativo?: import('./handoff').HandoffOperativo;
   errorMessage?: string;
   metadata: AnalysisMetadata;
+  // v2 fields
+  effortTier?: 1 | 2 | 3 | 4;
+  chapterSpecs?: import('../ai/prompts/architect').ChapterSpec[];
+  chapters?: Record<number, ChapterEntry>;
+  cost?: CostSnapshot;
 }

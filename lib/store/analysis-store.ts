@@ -2,8 +2,9 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { Analysis, AnalysisStatus } from '@/lib/types/analysis';
+import type { Analysis, AnalysisStatus, ChapterEntry, CostSnapshot } from '@/lib/types/analysis';
 import type { HandoffData1, HandoffOperativo } from '@/lib/types/handoff';
+import type { ChapterSpec } from '@/lib/ai/prompts/architect';
 
 interface AnalysisStore {
   analyses: Analysis[];
@@ -24,6 +25,10 @@ interface AnalysisStore {
   setReportPart1: (id: string, text: string, contextBridge: string) => void;
   setReportPart2: (id: string, text: string, handoffOperativo: HandoffOperativo | null) => void;
   setConclusions: (id: string, text: string) => void;
+  setEffortTier: (id: string, tier: 1 | 2 | 3 | 4) => void;
+  setChapterSpecs: (id: string, specs: ChapterSpec[]) => void;
+  upsertChapter: (id: string, number: number, patch: Partial<ChapterEntry> & { title?: string }) => void;
+  setCost: (id: string, cost: CostSnapshot) => void;
   setActive: (id: string | null) => void;
   getActive: () => Analysis | null;
   getById: (id: string) => Analysis | undefined;
@@ -122,6 +127,50 @@ export const useAnalysisStore = create<AnalysisStore>()(
         }));
       },
 
+      setEffortTier: (id, tier) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) =>
+            a.id === id ? { ...a, effortTier: tier, updatedAt: new Date().toISOString() } : a
+          ),
+        }));
+      },
+
+      setChapterSpecs: (id, specs) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) =>
+            a.id === id ? { ...a, chapterSpecs: specs, updatedAt: new Date().toISOString() } : a
+          ),
+        }));
+      },
+
+      upsertChapter: (id, number, patch) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) => {
+            if (a.id !== id) return a;
+            const existing = a.chapters?.[number];
+            const updated: ChapterEntry = {
+              title: patch.title ?? existing?.title ?? `Cap ${number}`,
+              text: patch.text ?? existing?.text ?? '',
+              wordCount: patch.wordCount ?? existing?.wordCount ?? 0,
+              status: patch.status ?? existing?.status ?? 'pending',
+            };
+            return {
+              ...a,
+              chapters: { ...(a.chapters || {}), [number]: updated },
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }));
+      },
+
+      setCost: (id, cost) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) =>
+            a.id === id ? { ...a, cost, updatedAt: new Date().toISOString() } : a
+          ),
+        }));
+      },
+
       setActive: (id) => set({ activeAnalysisId: id }),
 
       getActive: () => {
@@ -148,11 +197,12 @@ export const useAnalysisStore = create<AnalysisStore>()(
         ...state,
         analyses: state.analyses.map((a) => ({
           ...a,
-          // Keep full text only for completed analyses
           reportPart1: a.status === 'complete' ? a.reportPart1 : a.reportPart1?.slice(0, 1000),
           reportPart2: a.status === 'complete' ? a.reportPart2 : undefined,
           snapshotRawText: undefined,
           handoffData1RawText: undefined,
+          // Exclude heavy chapter specs from localStorage; chapters text is kept for in-progress recovery
+          chapterSpecs: undefined,
         })),
       }),
     }

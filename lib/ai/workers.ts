@@ -122,7 +122,7 @@ async function runMapReduce(input: WorkerInput): Promise<ModuleOutput> {
     },
   ];
 
-  let extractResponse = await openrouter.chat.completions.create({
+  const extractResponse = await openrouter.chat.completions.create({
     ...extractionParams,
     messages: extractMessages,
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) as OpenAI.ChatCompletion;

@@ -1,0 +1,110 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import type { ChapterEntry } from '@/lib/types/analysis';
+
+interface Props {
+  chapters: Record<number, ChapterEntry>;
+  autoScroll?: boolean;
+}
+
+function renderMarkdown(text: string): string {
+  return text
+    .replace(/^## (.+)$/gm, '<h2 class="text-base font-bold mt-4 mb-2" style="color:var(--accent-deepest)">$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3 class="text-sm font-semibold mt-3 mb-1" style="color:var(--text-primary)">$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^- (.+)$/gm, '<li class="ml-4 text-xs list-disc">$1</li>')
+    .replace(/(<li.*<\/li>\n?)+/g, '<ul class="space-y-0.5 my-1.5">$&</ul>')
+    .replace(/\n\n/g, '</p><p class="text-xs leading-relaxed mb-2">')
+    .replace(/^(?!<[h|u|l])(.+)$/gm, '<p class="text-xs leading-relaxed mb-1">$1</p>');
+}
+
+export function LiveReportPreview({ chapters, autoScroll = true }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [userScrolled, setUserScrolled] = useState(false);
+
+  const sortedEntries = Object.entries(chapters)
+    .map(([k, v]) => ({ number: parseInt(k, 10), ...v }))
+    .filter((c) => c.status === 'done' && c.text)
+    .sort((a, b) => a.number - b.number);
+
+  useEffect(() => {
+    if (autoScroll && !userScrolled && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [sortedEntries.length, autoScroll, userScrolled]);
+
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 80;
+    setUserScrolled(!isAtBottom);
+  };
+
+  if (sortedEntries.length === 0) {
+    return (
+      <div
+        className="h-full flex items-center justify-center rounded-xl border"
+        style={{ borderColor: 'var(--border-brand)', backgroundColor: 'var(--surface)' }}
+      >
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Il report apparirà qui man mano che i capitoli vengono scritti...
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-brand)' }}>
+      <div
+        className="flex items-center justify-between px-4 py-2 border-b text-xs font-semibold"
+        style={{ borderColor: 'var(--border-brand)', backgroundColor: 'var(--surface)', color: 'var(--text-secondary)' }}
+      >
+        <span>Anteprima report — {sortedEntries.length} capitoli</span>
+        {userScrolled && (
+          <button
+            onClick={() => {
+              setUserScrolled(false);
+              if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight;
+            }}
+            className="text-[10px] px-2 py-0.5 rounded"
+            style={{ backgroundColor: 'var(--accent-primary)', color: 'var(--accent-deepest)' }}
+          >
+            ↓ Vai in fondo
+          </button>
+        )}
+      </div>
+
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 py-3"
+        style={{ backgroundColor: 'white' }}
+      >
+        {sortedEntries.map((ch) => (
+          <div
+            key={ch.number}
+            id={`live-cap-${ch.number}`}
+            className="mb-6 pb-4 border-b last:border-0"
+            style={{ borderColor: 'var(--border-brand)' }}
+          >
+            <p
+              className="text-xs font-bold uppercase tracking-wide mb-2"
+              style={{ color: 'var(--accent-primary)' }}
+            >
+              CAP {ch.number} — {ch.title}
+            </p>
+            <div
+              className="text-xs leading-relaxed"
+              style={{ color: 'var(--text-primary)' }}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(ch.text) }}
+            />
+            <p className="text-[10px] mt-2" style={{ color: 'var(--text-secondary)' }}>
+              {ch.wordCount.toLocaleString()} parole
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -1,23 +1,24 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ReportCover } from '@/components/report/ReportCover';
-import { ReportIndex } from '@/components/report/ReportIndex';
-import { ExecutiveSummary } from '@/components/report/ExecutiveSummary';
-import { ChapterBlock } from '@/components/report/ChapterBlock';
 import { RoadmapTimeline } from '@/components/report/RoadmapTimeline';
 import { TestPlan } from '@/components/report/TestPlan';
 import { HandoffJsonViewer } from '@/components/report/HandoffJsonViewer';
 import { MicroSegmentTable } from '@/components/report/MicroSegmentTable';
+import { ChapterNavSidebar } from '@/components/report/ChapterNavSidebar';
+import { ChapterSection } from '@/components/report/ChapterSection';
+import { CompetitorMatrix } from '@/components/report/CompetitorMatrix';
+import { VerifiedFactsGrid } from '@/components/report/VerifiedFactsGrid';
 import { useAnalysisStore } from '@/lib/store/analysis-store';
 import { parseReport } from '@/lib/parsers/parse-report';
-import { marked } from 'marked';
 import { Button } from '@/components/ui/button';
-import { Download, Printer, Copy, FileJson, Loader2 } from 'lucide-react';
+import { Download, Printer, Copy, FileJson, Loader2, Search } from 'lucide-react';
 import type { ParsedReport } from '@/lib/types/report';
+import type { CompetitorEntry, VerifiedFact } from '@/lib/types/research-ledger';
 
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
@@ -26,6 +27,9 @@ export default function ReportPage() {
   const [report, setReport] = useState<ParsedReport | null>(null);
   const [copied, setCopied] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [activeChapter, setActiveChapter] = useState<number>(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const mainRef = useRef<HTMLDivElement>(null);
 
   const analysis = getById(params.id);
 
@@ -76,7 +80,6 @@ export default function ReportPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      // Fallback to legacy export page
       router.push(`/analysis/${params.id}/export`);
     } finally {
       setPdfLoading(false);
@@ -85,8 +88,7 @@ export default function ReportPage() {
 
   const handleCopyMarkdown = async () => {
     const text = [analysis.reportPart1, analysis.reportPart2, analysis.conclusions]
-      .filter(Boolean)
-      .join('\n\n---\n\n');
+      .filter(Boolean).join('\n\n---\n\n');
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -103,58 +105,79 @@ export default function ReportPage() {
     URL.revokeObjectURL(url);
   };
 
-  const hasReport = !!(analysis.reportPart1 || analysis.reportPart2);
+  const scrollToChapter = (number: number) => {
+    setActiveChapter(number);
+    const el = document.getElementById(`cap-${number}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // Build chapter list — prefer v2 chapters, fallback to parsed report
+  type ChapterItem = { number: number; title: string; text: string; wordCount?: number };
+  let chapterItems: ChapterItem[] = [];
+
+  if (analysis.chapters && Object.keys(analysis.chapters).length > 0) {
+    chapterItems = Object.entries(analysis.chapters)
+      .map(([k, v]) => ({ number: parseInt(k, 10), title: v.title, text: v.text, wordCount: v.wordCount }))
+      .filter((c) => c.text && c.text.length > 0)
+      .sort((a, b) => a.number - b.number);
+  } else if (report?.chapters && report.chapters.length > 0) {
+    chapterItems = report.chapters.map((ch, i) => ({
+      number: i + 1,
+      title: ch.title || `Capitolo ${i + 1}`,
+      text: ch.content || '',
+      wordCount: ch.content ? ch.content.split(/\s+/).length : 0,
+    }));
+  }
+
+  // Search filter
+  const searchedChapters = searchQuery.trim()
+    ? chapterItems.filter((c) =>
+        c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.text.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : chapterItems;
+
+  // Collect competitor data from analysis store
+  const competitorMatrix: CompetitorEntry[] = [];
+  const verifiedFacts: VerifiedFact[] = [];
+  // Extract from chapter texts (the ledger is not persisted to store, use handoff data as fallback)
+
+  const hasReport = !!(analysis.reportPart1 || analysis.reportPart2 || chapterItems.length > 0);
 
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <div className="flex flex-1">
+      <div className="flex flex-1 overflow-hidden">
         <Sidebar />
 
-        <main className="flex-1 overflow-y-auto">
-          {/* Export toolbar */}
+        <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0">
+          {/* Top toolbar */}
           <div
             className="sticky top-0 z-30 flex items-center justify-between px-6 py-3 border-b bg-white"
             style={{ borderColor: 'var(--border-brand)' }}
           >
-            <div>
-              <h1 className="font-bold" style={{ color: 'var(--accent-deepest)' }}>
+            <div className="min-w-0">
+              <h1 className="font-bold truncate" style={{ color: 'var(--accent-deepest)' }}>
                 {analysis.clientName}
               </h1>
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {analysis.sector}
-                {analysis.status === 'complete'
-                  ? ` • ${report?.chapters.length || 0} capitoli`
-                  : ` • ${analysis.status}`}
+                {analysis.status === 'complete' && chapterItems.length > 0
+                  ? ` · ${chapterItems.length} capitoli · ${(analysis.metadata?.wordCount || 0).toLocaleString()} parole`
+                  : ` · ${analysis.status}`}
+                {analysis.cost && ` · $${analysis.cost.totalUsd.toFixed(3)}`}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopyMarkdown}
-                disabled={!hasReport}
-                className="gap-1 text-xs"
-              >
+            <div className="flex items-center gap-2 shrink-0">
+              <Button variant="outline" size="sm" onClick={handleCopyMarkdown} disabled={!hasReport} className="gap-1 text-xs">
                 <Copy className="w-3 h-3" />
-                {copied ? 'Copiato!' : 'Copia MD'}
+                {copied ? 'Copiato!' : 'MD'}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportJson}
-                disabled={!analysis.handoffOperativo}
-                className="gap-1 text-xs"
-              >
+              <Button variant="outline" size="sm" onClick={handleExportJson} disabled={!analysis.handoffOperativo} className="gap-1 text-xs">
                 <FileJson className="w-3 h-3" />
-                Esporta JSON
+                JSON
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.print()}
-                className="gap-1 text-xs"
-              >
+              <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1 text-xs">
                 <Printer className="w-3 h-3" />
                 Stampa
               </Button>
@@ -165,18 +188,13 @@ export default function ReportPage() {
                 className="gap-1 text-xs text-white"
                 style={{ backgroundColor: 'var(--accent-deepest)' }}
               >
-                {pdfLoading ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Download className="w-3 h-3" />
-                )}
-                {pdfLoading ? 'Generando...' : 'Scarica PDF'}
+                {pdfLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                {pdfLoading ? 'Generando...' : 'PDF'}
               </Button>
             </div>
           </div>
 
-          <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
-            {/* Cover */}
+          <div className="max-w-6xl mx-auto px-6 py-8">
             <ReportCover
               clientName={analysis.clientName}
               sector={analysis.sector}
@@ -184,33 +202,92 @@ export default function ReportPage() {
               date={analysis.createdAt}
             />
 
-            {/* Index + content layout */}
-            {hasReport && report ? (
-              <div className="grid grid-cols-[220px_1fr] gap-6">
-                {/* Sticky index */}
-                <div className="sticky top-20 self-start">
-                  <ReportIndex
-                    chapters={report.chapters}
-                    hasExecutiveSummary={!!report.executiveSummary}
-                    hasRoadmap={!!report.roadmap}
-                    hasConclusions={!!report.conclusions}
+            {hasReport && chapterItems.length > 0 ? (
+              <div className="mt-8 flex gap-6">
+                {/* Sticky sidebar nav */}
+                <div
+                  className="hidden lg:flex flex-col sticky top-20 self-start rounded-xl border overflow-hidden"
+                  style={{
+                    width: 220,
+                    minWidth: 220,
+                    maxHeight: 'calc(100vh - 120px)',
+                    borderColor: 'var(--border-brand)',
+                    backgroundColor: 'white',
+                  }}
+                >
+                  <div
+                    className="px-3 pt-3 pb-2 border-b text-xs font-semibold"
+                    style={{ borderColor: 'var(--border-brand)', color: 'var(--text-secondary)' }}
+                  >
+                    {chapterItems.length} capitoli
+                  </div>
+                  <ChapterNavSidebar
+                    chapters={chapterItems}
+                    activeNumber={activeChapter}
+                    onSelect={scrollToChapter}
                   />
                 </div>
 
-                {/* Report body */}
-                <div className="space-y-8 min-w-0">
-                  {/* Executive Summary */}
-                  {(report.executiveSummary || analysis.handoffOperativo) && (
-                    <ExecutiveSummary
-                      rawText={report.executiveSummary}
-                      handoffOperativo={analysis.handoffOperativo}
+                {/* Main content */}
+                <div className="flex-1 min-w-0 space-y-4">
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+                    <input
+                      type="text"
+                      placeholder="Cerca nel report..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border focus:outline-none focus:ring-1"
+                      style={{ borderColor: 'var(--border-brand)', color: 'var(--text-primary)' }}
                     />
-                  )}
+                    {searchQuery && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        {searchedChapters.length} risultati
+                      </span>
+                    )}
+                  </div>
 
                   {/* Chapters */}
-                  {report.chapters.map((chapter) => (
-                    <ChapterBlock key={chapter.id} section={chapter} />
+                  {searchedChapters.map((ch, i) => (
+                    <ChapterSection
+                      key={ch.number}
+                      number={ch.number}
+                      title={ch.title}
+                      text={ch.text}
+                      wordCount={ch.wordCount}
+                      defaultOpen={i < 3}
+                    />
                   ))}
+
+                  {searchedChapters.length === 0 && searchQuery && (
+                    <div className="text-center py-12" style={{ color: 'var(--text-secondary)' }}>
+                      <p className="text-sm">Nessun capitolo corrisponde a &ldquo;{searchQuery}&rdquo;</p>
+                      <button onClick={() => setSearchQuery('')} className="text-xs mt-2 underline" style={{ color: 'var(--accent-primary)' }}>
+                        Rimuovi filtro
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Competitor Matrix */}
+                  {competitorMatrix.length > 0 && (
+                    <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border-brand)' }}>
+                      <h3 className="font-bold mb-4" style={{ color: 'var(--accent-deepest)' }}>
+                        Competitor Matrix
+                      </h3>
+                      <CompetitorMatrix competitors={competitorMatrix} />
+                    </div>
+                  )}
+
+                  {/* Verified Facts */}
+                  {verifiedFacts.length > 0 && (
+                    <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border-brand)' }}>
+                      <h3 className="font-bold mb-4" style={{ color: 'var(--accent-deepest)' }}>
+                        Fatti Verificati ({verifiedFacts.length})
+                      </h3>
+                      <VerifiedFactsGrid facts={verifiedFacts} />
+                    </div>
+                  )}
 
                   {/* Roadmap */}
                   {analysis.handoffOperativo?.roadmap && (
@@ -228,10 +305,8 @@ export default function ReportPage() {
 
                   {/* Micro Segments */}
                   {analysis.handoffOperativo?.micro_segments && (
-                    <div>
-                      <h3 className="font-bold mb-4" style={{ color: 'var(--accent-deepest)' }}>
-                        Micro-Segmentazione
-                      </h3>
+                    <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border-brand)' }}>
+                      <h3 className="font-bold mb-4" style={{ color: 'var(--accent-deepest)' }}>Micro-Segmentazione</h3>
                       <MicroSegmentTable segments={analysis.handoffOperativo.micro_segments} />
                     </div>
                   )}
@@ -239,8 +314,7 @@ export default function ReportPage() {
                   {/* Conclusions */}
                   {analysis.conclusions && (
                     <div
-                      id="conclusions"
-                      data-section-id="conclusions"
+                      id="cap-conclusions"
                       className="rounded-xl border p-6"
                       style={{ borderColor: 'var(--accent-primary)', backgroundColor: 'var(--surface)' }}
                     >
@@ -250,7 +324,7 @@ export default function ReportPage() {
                       <div
                         className="prose prose-sm max-w-none"
                         dangerouslySetInnerHTML={{
-                          __html: marked.parse(analysis.conclusions, { breaks: true }) as string,
+                          __html: analysis.conclusions,
                         }}
                       />
                     </div>
@@ -267,7 +341,7 @@ export default function ReportPage() {
               </div>
             ) : (
               <div
-                className="text-center py-16 rounded-xl border"
+                className="text-center py-16 rounded-xl border mt-8"
                 style={{ borderColor: 'var(--border-brand)', backgroundColor: 'var(--surface)' }}
               >
                 <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
@@ -278,9 +352,7 @@ export default function ReportPage() {
                     : 'Analisi in corso...'}
                 </p>
                 {analysis.status !== 'complete' && analysis.status !== 'error' && (
-                  <Button onClick={() => router.push('/analysis/new')}>
-                    Nuova Analisi
-                  </Button>
+                  <Button onClick={() => router.push('/analysis/new')}>Nuova Analisi</Button>
                 )}
               </div>
             )}
