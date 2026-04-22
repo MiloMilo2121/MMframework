@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { marked } from 'marked';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { renderMarkdown } from '@/lib/markdown';
 import type { ChapterEntry } from '@/lib/types/analysis';
 
 interface Props {
@@ -9,14 +9,28 @@ interface Props {
   autoScroll?: boolean;
 }
 
+const ChapterBody = memo(function ChapterBody({ text }: { text: string }) {
+  const html = useMemo(() => renderMarkdown(text), [text]);
+  return (
+    <div
+      className="text-xs leading-relaxed"
+      style={{ color: 'var(--text-primary)' }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+});
+
 export function LiveReportPreview({ chapters, autoScroll = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [userScrolled, setUserScrolled] = useState(false);
 
-  const sortedEntries = Object.entries(chapters)
-    .map(([k, v]) => ({ number: parseInt(k, 10), ...v }))
-    .filter((c) => c.status === 'done' && c.text)
-    .sort((a, b) => a.number - b.number);
+  const sortedEntries = useMemo(
+    () => Object.entries(chapters)
+      .map(([k, v]) => ({ number: parseInt(k, 10), ...v }))
+      .filter((c) => c.status === 'done' && c.text)
+      .sort((a, b) => a.number - b.number),
+    [chapters]
+  );
 
   useEffect(() => {
     if (autoScroll && !userScrolled && containerRef.current) {
@@ -27,8 +41,7 @@ export function LiveReportPreview({ chapters, autoScroll = true }: Props) {
   const handleScroll = () => {
     if (!containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 80;
-    setUserScrolled(!isAtBottom);
+    setUserScrolled(scrollHeight - scrollTop - clientHeight >= 80);
   };
 
   if (sortedEntries.length === 0) {
@@ -78,17 +91,10 @@ export function LiveReportPreview({ chapters, autoScroll = true }: Props) {
             className="mb-6 pb-4 border-b last:border-0"
             style={{ borderColor: 'var(--border-brand)' }}
           >
-            <p
-              className="text-xs font-bold uppercase tracking-wide mb-2"
-              style={{ color: 'var(--accent-primary)' }}
-            >
+            <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--accent-primary)' }}>
               CAP {ch.number} — {ch.title}
             </p>
-            <div
-              className="text-xs leading-relaxed"
-              style={{ color: 'var(--text-primary)' }}
-              dangerouslySetInnerHTML={{ __html: marked.parse(ch.text, { breaks: true }) as string }}
-            />
+            <ChapterBody text={ch.text} />
             <p className="text-[10px] mt-2" style={{ color: 'var(--text-secondary)' }}>
               {ch.wordCount.toLocaleString()} parole
             </p>

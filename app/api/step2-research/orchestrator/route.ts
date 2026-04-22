@@ -39,7 +39,9 @@ import {
 import { CostTracker } from '@/lib/ai/cost-tracker';
 import { parseHandoffOperativo } from '@/lib/parsers/parse-handoff';
 import { extractContextBridge } from '@/lib/parsers/parse-report';
+import { extractJson } from '@/lib/parsers/extract-json';
 import { healResponse } from '@/lib/ai/response-healing';
+import type { ModuleId } from '@/lib/types/research-ledger';
 
 export const maxDuration = 300;
 
@@ -129,44 +131,26 @@ export async function POST(req: NextRequest) {
         send('module_status', { workerId: 'product_tech', status: 'running', toolCalls: 0 });
         send('module_status', { workerId: 'economics_pricing', status: 'running', toolCalls: 0 });
 
-        const workerResults = await Promise.allSettled([
-          runWorker({
-            moduleId: 'market_dynamics',
-            systemPrompt: PHASE_C_MARKET_DYNAMICS,
-            userPrompt: buildWorkerExtractPrompt('market_dynamics', contextSlice),
-            model: minerModel,
-            queryGenSystemPrompt: PHASE_A_MARKET_DYNAMICS,
-            queryGenUserPrompt: buildWorkerQueryPrompt('market_dynamics', contextSlice),
-            onCost: trackCost,
-          }),
-          runWorker({
-            moduleId: 'competitor_intelligence',
-            systemPrompt: PHASE_C_COMPETITOR,
-            userPrompt: buildWorkerExtractPrompt('competitor_intelligence', contextSlice),
-            model: minerModel,
-            queryGenSystemPrompt: PHASE_A_COMPETITOR,
-            queryGenUserPrompt: buildWorkerQueryPrompt('competitor_intelligence', contextSlice),
-            onCost: trackCost,
-          }),
-          runWorker({
-            moduleId: 'product_tech',
-            systemPrompt: PHASE_C_PRODUCT_TECH,
-            userPrompt: buildWorkerExtractPrompt('product_tech', contextSlice),
-            model: minerModel,
-            queryGenSystemPrompt: PHASE_A_PRODUCT_TECH,
-            queryGenUserPrompt: buildWorkerQueryPrompt('product_tech', contextSlice),
-            onCost: trackCost,
-          }),
-          runWorker({
-            moduleId: 'economics_pricing',
-            systemPrompt: PHASE_C_ECONOMICS,
-            userPrompt: buildWorkerExtractPrompt('economics_pricing', contextSlice),
-            model: minerModel,
-            queryGenSystemPrompt: PHASE_A_ECONOMICS,
-            queryGenUserPrompt: buildWorkerQueryPrompt('economics_pricing', contextSlice),
-            onCost: trackCost,
-          }),
-        ]);
+        const MINER_MODULES: Array<{ id: Exclude<ModuleId, 'swoc_synthesis'>; phaseA: string; phaseC: string }> = [
+          { id: 'market_dynamics',         phaseA: PHASE_A_MARKET_DYNAMICS, phaseC: PHASE_C_MARKET_DYNAMICS },
+          { id: 'competitor_intelligence', phaseA: PHASE_A_COMPETITOR,      phaseC: PHASE_C_COMPETITOR      },
+          { id: 'product_tech',            phaseA: PHASE_A_PRODUCT_TECH,    phaseC: PHASE_C_PRODUCT_TECH    },
+          { id: 'economics_pricing',       phaseA: PHASE_A_ECONOMICS,       phaseC: PHASE_C_ECONOMICS       },
+        ];
+
+        const workerResults = await Promise.allSettled(
+          MINER_MODULES.map((m) =>
+            runWorker({
+              moduleId: m.id,
+              systemPrompt: m.phaseC,
+              userPrompt: buildWorkerExtractPrompt(m.id, contextSlice),
+              model: minerModel,
+              queryGenSystemPrompt: m.phaseA,
+              queryGenUserPrompt: buildWorkerQueryPrompt(m.id, contextSlice),
+              onCost: trackCost,
+            })
+          )
+        );
 
         // Merge Worker outputs into ledger
         for (const result of workerResults) {
@@ -271,11 +255,9 @@ export async function POST(req: NextRequest) {
         const architectRaw = architectResponse2.choices?.[0]?.message?.content || '[]';
         costTracker.add(architectModel, architectResponse2.usage, 'architect');
         try {
-          const cleaned = architectRaw.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
-          chapterSpecs = JSON.parse(cleaned) as ChapterSpec[];
+          chapterSpecs = JSON.parse(extractJson(architectRaw)) as ChapterSpec[];
         } catch {
           send('warning', { message: '⚠️ Architect JSON parse error — fallback a struttura minima', code: 'ARCHITECT_PARSE_ERROR' });
-          chapterSpecs = [];
         }
 
         if (chapterSpecs.length === 0) {
@@ -285,11 +267,10 @@ export async function POST(req: NextRequest) {
             focus_instructions: `Analizza il settore ${sector} per ${clientName}. Usa i dati del ledger.`,
             required_data_points: ['market_data', 'competitor_matrix'],
             target_word_count: tierConfig.wordsPerChapter,
-            ledger_sections: ['all'] as ChapterSpec['ledger_sections'],
+            ledger_sections: ['all'],
           }));
         }
 
-        // Guarantee HANDOFF_OPERATIVO as last chapter
         chapterSpecs = enforceHandoffOperativo(chapterSpecs, 500);
 
         send('chapter_index', { chapters: chapterSpecs, tier });

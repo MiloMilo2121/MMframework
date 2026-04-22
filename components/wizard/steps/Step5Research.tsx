@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,8 @@ import type { HandoffOperativo } from '@/lib/types/handoff';
 import type { CostSnapshot } from '@/lib/types/analysis';
 import type { ChapterSpec } from '@/lib/ai/prompts/architect';
 import { TIER_CAP_USD_MAP } from '@/lib/ai/cost-tracker-client';
+import { SSE_EVENT } from '@/lib/ai/sse-events';
+import type { ChapterStatus } from '@/lib/ui/status';
 
 interface Props {
   analysisId: string;
@@ -22,12 +24,20 @@ interface Props {
 type PhaseStatus = 'pending' | 'active' | 'complete' | 'error';
 
 const WORKER_LABELS: Record<string, string> = {
-  market_dynamics:        'Market Dynamics',
-  competitor_intelligence:'Competitor War-Room',
-  product_tech:           'Product & Tech',
-  economics_pricing:      'Economics & Pricing',
-  swoc_synthesis:         'Challenger QA',
+  market_dynamics:         'Market Dynamics',
+  competitor_intelligence: 'Competitor War-Room',
+  product_tech:            'Product & Tech',
+  economics_pricing:       'Economics & Pricing',
+  swoc_synthesis:          'Challenger QA',
 };
+
+const INITIAL_WORKERS: WorkerStatus[] = [
+  { id: 'market_dynamics',         label: 'Market Dynamics',      status: 'pending' },
+  { id: 'competitor_intelligence', label: 'Competitor War-Room',  status: 'pending' },
+  { id: 'product_tech',            label: 'Product & Tech',       status: 'pending' },
+  { id: 'economics_pricing',       label: 'Economics & Pricing', status: 'pending' },
+  { id: 'swoc_synthesis',          label: 'Challenger QA',        status: 'pending' },
+];
 
 export function Step5Research({ analysisId }: Props) {
   const router = useRouter();
@@ -44,18 +54,21 @@ export function Step5Research({ analysisId }: Props) {
   const [log, setLog] = useState<Array<{ ts: string; message: string; type?: string }>>([]);
   const [isDone, setIsDone] = useState(false);
   const [isRunning, setIsRunning] = useState(true);
-  const [workers, setWorkers] = useState<WorkerStatus[]>([
-    { id: 'market_dynamics',         label: 'Market Dynamics',      status: 'pending' },
-    { id: 'competitor_intelligence',  label: 'Competitor War-Room',  status: 'pending' },
-    { id: 'product_tech',             label: 'Product & Tech',        status: 'pending' },
-    { id: 'economics_pricing',        label: 'Economics & Pricing',  status: 'pending' },
-    { id: 'swoc_synthesis',           label: 'Challenger QA',         status: 'pending' },
-  ]);
-  const [chapterSpecs, setLocalChapterSpecs] = useState<ChapterSpec[]>([]);
-  const [chapterStatusMap, setChapterStatusMap] = useState<Record<number, 'pending' | 'writing' | 'done' | 'error'>>({});
-  const [cost, setCostLocal] = useState<CostSnapshot | null>(null);
+  const [workers, setWorkers] = useState<WorkerStatus[]>(INITIAL_WORKERS);
   const startTimeRef = useRef(Date.now());
   const completedWorkersRef = useRef(0);
+
+  // Derive chapter view state from store (single source of truth)
+  const chapterSpecs = useMemo(() => analysis?.chapterSpecs ?? [], [analysis?.chapterSpecs]);
+  const chaptersFromStore = useMemo(() => analysis?.chapters ?? {}, [analysis?.chapters]);
+  const cost = analysis?.cost ?? null;
+  const statusMap = useMemo(() => {
+    const map: Record<number, ChapterStatus> = {};
+    for (const spec of chapterSpecs) {
+      map[spec.number] = chaptersFromStore[spec.number]?.status ?? 'pending';
+    }
+    return map;
+  }, [chapterSpecs, chaptersFromStore]);
 
   const addLog = useCallback((message: string, type?: string) => {
     const ts = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -70,8 +83,7 @@ export function Step5Research({ analysisId }: Props) {
     setCurrentChapter(chapter);
     const match = chapter.match(/(\d+)/);
     if (match) {
-      const capNum = parseInt(match[1], 10);
-      setOrchestratorProgress(Math.min(95, 40 + capNum * 2));
+      setOrchestratorProgress(Math.min(95, 40 + parseInt(match[1], 10) * 2));
     }
   }, []);
 
@@ -97,10 +109,7 @@ export function Step5Research({ analysisId }: Props) {
     setReportPart1(analysisId, fullText.slice(0, midpoint), '');
     setReportPart2(analysisId, fullText.slice(midpoint), handoffOperativo);
 
-    if (costData) {
-      setCost(analysisId, costData);
-      setCostLocal(costData);
-    }
+    if (costData) setCost(analysisId, costData);
     if (specs.length > 0) setChapterSpecs(analysisId, specs);
 
     setOrchestratorProgress(100);
@@ -151,74 +160,74 @@ export function Step5Research({ analysisId }: Props) {
     setIsRunning(false);
   }, [addLog, analysisId, updateStatus]);
 
-  const handleRawEvent = useCallback((eventType: string, data: Record<string, unknown>) => {
-    if (eventType === 'module_status') {
+  // SSE event dispatch table — typo-proof via SSE_EVENT constants
+  const eventHandlers = useMemo(() => ({
+    [SSE_EVENT.MODULE_STATUS]: (data: Record<string, unknown>) => {
       const wId = String(data.workerId || '');
       const wStatus = data.status as WorkerStatus['status'];
-      if (wId && wStatus) {
-        updateWorker(wId, { status: wStatus, toolCalls: typeof data.toolCalls === 'number' ? data.toolCalls : undefined });
-        const label = WORKER_LABELS[wId] || wId;
-        if (wStatus === 'complete') {
-          completedWorkersRef.current++;
-          addLog(`✓ ${label} — ${data.toolCalls || 0} ricerche`);
-        } else if (wStatus === 'running') addLog(`⚡ ${label} avviato`);
-        else if (wStatus === 'error') addLog(`✗ ${label}: ${String(data.message || 'errore')}`, 'error');
+      if (!wId || !wStatus) return;
+      updateWorker(wId, { status: wStatus, toolCalls: typeof data.toolCalls === 'number' ? data.toolCalls : undefined });
+      const label = WORKER_LABELS[wId] || wId;
+      if (wStatus === 'complete') {
+        completedWorkersRef.current++;
+        addLog(`✓ ${label} — ${data.toolCalls || 0} ricerche`);
+      } else if (wStatus === 'running') {
+        addLog(`⚡ ${label} avviato`);
+      } else if (wStatus === 'error') {
+        addLog(`✗ ${label}: ${String(data.message || 'errore')}`, 'error');
       }
       setOrchestratorProgress(Math.min(35, completedWorkersRef.current * 7));
-    }
+    },
 
-    if (eventType === 'chapter_index') {
+    [SSE_EVENT.CHAPTER_INDEX]: (data: Record<string, unknown>) => {
       const specs = Array.isArray(data.chapters) ? data.chapters as ChapterSpec[] : [];
-      setLocalChapterSpecs(specs);
       setChapterSpecs(analysisId, specs);
-      const initial: Record<number, 'pending'> = {};
-      specs.forEach((s) => { initial[s.number] = 'pending'; });
-      setChapterStatusMap(initial);
+      for (const s of specs) upsertChapter(analysisId, s.number, { status: 'pending', title: s.title });
       addLog(`📋 ${specs.length} capitoli pianificati`);
-    }
+    },
 
-    if (eventType === 'chapter_start') {
+    [SSE_EVENT.CHAPTER_START]: (data: Record<string, unknown>) => {
       const num = typeof data.number === 'number' ? data.number : 0;
       const title = typeof data.title === 'string' ? data.title : '';
-      setChapterStatusMap((prev) => ({ ...prev, [num]: 'writing' }));
       upsertChapter(analysisId, num, { status: 'writing', title });
       setCurrentChapter(`CAP ${num} — ${title.slice(0, 40)}`);
-    }
+    },
 
-    if (eventType === 'chapter_complete') {
+    [SSE_EVENT.CHAPTER_COMPLETE]: (data: Record<string, unknown>) => {
       const num = typeof data.number === 'number' ? data.number : 0;
       const title = typeof data.title === 'string' ? data.title : '';
       const text = typeof data.text === 'string' ? data.text : '';
       const wordCount = typeof data.wordCount === 'number' ? data.wordCount : 0;
-      setChapterStatusMap((prev) => ({ ...prev, [num]: 'done' }));
       upsertChapter(analysisId, num, { status: 'done', title, text, wordCount });
-    }
+    },
 
-    if (eventType === 'cost_update') {
-      const snap = data as unknown as CostSnapshot;
-      setCostLocal(snap);
-      setCost(analysisId, snap);
-    }
+    [SSE_EVENT.COST_UPDATE]: (data: Record<string, unknown>) => {
+      setCost(analysisId, data as unknown as CostSnapshot);
+    },
 
-    if (eventType === 'cost_exceeded') {
+    [SSE_EVENT.COST_EXCEEDED]: (data: Record<string, unknown>) => {
       addLog(`⛔ Budget superato: $${(data.totalUsd as number).toFixed(3)} / $${data.capUsd} — generazione interrotta`, 'warning');
-    }
-  }, [updateWorker, addLog, analysisId, setChapterSpecs, upsertChapter, setCost]);
+    },
+  }), [analysisId, addLog, setChapterSpecs, upsertChapter, setCost, updateWorker]);
 
-  const orchestratorBody = {
+  const handleRawEvent = useCallback((eventType: string, data: Record<string, unknown>) => {
+    eventHandlers[eventType as keyof typeof eventHandlers]?.(data);
+  }, [eventHandlers]);
+
+  const orchestratorBody = useMemo(() => ({
     clientSnapshot: JSON.stringify(analysis?.clientSnapshot || {}),
     handoffData1: JSON.stringify(analysis?.handoffData1 || {}),
     questionnaire: analysis?.questionnaire,
     analysisId,
     effort_tier: effortTier,
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [analysisId]);
 
   const capUsd = TIER_CAP_USD_MAP[effortTier as 1 | 2 | 3 | 4] ?? 10;
-  const chaptersFromStore = analysis?.chapters ?? {};
+  const estimatedSecondsLeft = Math.max(0, 240 - Math.floor((Date.now() - startTimeRef.current) / 1000));
 
   return (
     <div className="space-y-4 w-full">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: 'var(--accent-deepest)' }}>
@@ -238,12 +247,9 @@ export function Step5Research({ analysisId }: Props) {
         )}
       </div>
 
-      {/* Cost meter (fixed corner) */}
       {cost && isRunning && <CostMeter cost={cost} capUsd={capUsd} />}
 
-      {/* Main 2-col layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        {/* LEFT: progress panel */}
         <div className="space-y-4">
           <StreamingProgress
             phases={[{
@@ -254,22 +260,18 @@ export function Step5Research({ analysisId }: Props) {
             }]}
             currentChapter={currentChapter}
             log={log}
-            estimatedSecondsLeft={Math.max(0, 240000 - (Date.now() - startTimeRef.current)) / 1000}
+            estimatedSecondsLeft={estimatedSecondsLeft}
             workers={workers}
           />
 
           {chapterSpecs.length > 0 && (
             <ChapterProgressGrid
               chapterSpecs={chapterSpecs}
-              statusMap={chapterStatusMap}
-              onCellClick={(num) => {
-                const el = document.getElementById(`live-cap-${num}`);
-                el?.scrollIntoView({ behavior: 'smooth' });
-              }}
+              statusMap={statusMap}
+              onCellClick={(num) => document.getElementById(`live-cap-${num}`)?.scrollIntoView({ behavior: 'smooth' })}
             />
           )}
 
-          {/* SSE connector (hidden, drives all events) */}
           <div className="hidden">
             <StreamingText
               url="/api/step2-research/orchestrator"
@@ -285,7 +287,6 @@ export function Step5Research({ analysisId }: Props) {
           </div>
         </div>
 
-        {/* RIGHT: live preview */}
         <div className="h-[600px] lg:sticky lg:top-24">
           <LiveReportPreview chapters={chaptersFromStore} />
         </div>

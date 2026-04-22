@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ReportCover } from '@/components/report/ReportCover';
@@ -47,6 +47,33 @@ export default function ReportPage() {
       setReport(parsed);
     }
   }, [analysis]);
+
+  type ChapterItem = { number: number; title: string; text: string; wordCount?: number };
+  const chapterItems = useMemo<ChapterItem[]>(() => {
+    if (analysis?.chapters && Object.keys(analysis.chapters).length > 0) {
+      return Object.entries(analysis.chapters)
+        .map(([k, v]) => ({ number: parseInt(k, 10), title: v.title, text: v.text, wordCount: v.wordCount }))
+        .filter((c) => c.text && c.text.length > 0)
+        .sort((a, b) => a.number - b.number);
+    }
+    if (report?.chapters && report.chapters.length > 0) {
+      return report.chapters.map((ch, i) => ({
+        number: i + 1,
+        title: ch.title || `Capitolo ${i + 1}`,
+        text: ch.content || '',
+        wordCount: ch.content ? ch.content.split(/\s+/).length : 0,
+      }));
+    }
+    return [];
+  }, [analysis?.chapters, report]);
+
+  const searchedChapters = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return chapterItems;
+    return chapterItems.filter((c) =>
+      c.title.toLowerCase().includes(q) || c.text.toLowerCase().includes(q)
+    );
+  }, [chapterItems, searchQuery]);
 
   if (!analysis) {
     return (
@@ -111,31 +138,6 @@ export default function ReportPage() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  // Build chapter list — prefer v2 chapters, fallback to parsed report
-  type ChapterItem = { number: number; title: string; text: string; wordCount?: number };
-  let chapterItems: ChapterItem[] = [];
-
-  if (analysis.chapters && Object.keys(analysis.chapters).length > 0) {
-    chapterItems = Object.entries(analysis.chapters)
-      .map(([k, v]) => ({ number: parseInt(k, 10), title: v.title, text: v.text, wordCount: v.wordCount }))
-      .filter((c) => c.text && c.text.length > 0)
-      .sort((a, b) => a.number - b.number);
-  } else if (report?.chapters && report.chapters.length > 0) {
-    chapterItems = report.chapters.map((ch, i) => ({
-      number: i + 1,
-      title: ch.title || `Capitolo ${i + 1}`,
-      text: ch.content || '',
-      wordCount: ch.content ? ch.content.split(/\s+/).length : 0,
-    }));
-  }
-
-  // Search filter
-  const searchedChapters = searchQuery.trim()
-    ? chapterItems.filter((c) =>
-        c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.text.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : chapterItems;
 
   // Collect competitor data from analysis store
   const competitorMatrix: CompetitorEntry[] = [];

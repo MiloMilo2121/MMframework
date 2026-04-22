@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { marked } from 'marked';
+import { renderMarkdown } from '@/lib/markdown';
 
 interface Props {
   number: number;
@@ -14,37 +14,20 @@ interface Props {
 
 export function ChapterSection({ number, title, text, wordCount, defaultOpen = false }: Props) {
   const [open, setOpen] = useState(defaultOpen);
-
   const isHandoff = title.toUpperCase().includes('HANDOFF');
 
-  // For handoff chapter, extract and render JSON nicely
-  const renderContent = () => {
+  const rendered = useMemo(() => {
     if (isHandoff) {
       const jsonMatch = text.match(/```json\s*([\s\S]+?)\s*```/);
       if (jsonMatch) {
         try {
           const parsed = JSON.parse(jsonMatch[1]);
-          return (
-            <pre
-              className="text-xs overflow-x-auto p-4 rounded-lg"
-              style={{ backgroundColor: '#0d1117', color: '#7dd3ac' }}
-            >
-              {JSON.stringify(parsed, null, 2)}
-            </pre>
-          );
-        } catch { /* fall through */ }
+          return { kind: 'json' as const, value: JSON.stringify(parsed, null, 2) };
+        } catch { /* fall through to markdown */ }
       }
     }
-
-    const html = marked.parse(text, { breaks: true }) as string;
-    return (
-      <div
-        className="prose prose-sm max-w-none text-sm"
-        style={{ color: 'var(--text-primary)' }}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    );
-  };
+    return { kind: 'html' as const, value: renderMarkdown(text) };
+  }, [text, isHandoff]);
 
   return (
     <div
@@ -84,7 +67,17 @@ export function ChapterSection({ number, title, text, wordCount, defaultOpen = f
 
       {open && (
         <div className="px-5 pb-5 pt-1 border-t" style={{ borderColor: 'var(--border-brand)', backgroundColor: 'white' }}>
-          {renderContent()}
+          {rendered.kind === 'json' ? (
+            <pre className="text-xs overflow-x-auto p-4 rounded-lg" style={{ backgroundColor: '#0d1117', color: '#7dd3ac' }}>
+              {rendered.value}
+            </pre>
+          ) : (
+            <div
+              className="prose prose-sm max-w-none text-sm"
+              style={{ color: 'var(--text-primary)' }}
+              dangerouslySetInnerHTML={{ __html: rendered.value }}
+            />
+          )}
         </div>
       )}
     </div>

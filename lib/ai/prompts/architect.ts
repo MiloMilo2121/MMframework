@@ -34,33 +34,23 @@ export interface ChapterSpec {
   ledger_sections: ('market_data' | 'competitor_matrix' | 'verified_facts' | 'product_tech' | 'economics' | 'swoc' | 'all')[];
 }
 
-/**
- * Guarantee the last spec is always HANDOFF_OPERATIVO regardless of LLM output.
- */
+function buildHandoffSpec(number: number, targetWordCount: number): ChapterSpec {
+  return {
+    number,
+    title: 'HANDOFF_OPERATIVO',
+    focus_instructions: 'Scrivi SOLO il JSON HANDOFF_OPERATIVO strutturato con tutti i campi richiesti. Nient\'altro.',
+    required_data_points: ['tutte le decisioni strategiche', 'roadmap', 'messaggi chiave', 'test immediati'],
+    target_word_count: targetWordCount,
+    ledger_sections: ['all'],
+  };
+}
+
+/** Guarantees the last spec is HANDOFF_OPERATIVO regardless of LLM output. */
 export function enforceHandoffOperativo(specs: ChapterSpec[], targetWordCount = 500): ChapterSpec[] {
-  if (specs.length === 0) {
-    return [{
-      number: 1,
-      title: 'HANDOFF_OPERATIVO',
-      focus_instructions: 'Scrivi SOLO il JSON HANDOFF_OPERATIVO strutturato con tutti i campi richiesti. Nient\'altro.',
-      required_data_points: ['tutte le decisioni strategiche', 'roadmap', 'messaggi chiave', 'test immediati'],
-      target_word_count: targetWordCount,
-      ledger_sections: ['all'],
-    }];
-  }
+  if (specs.length === 0) return [buildHandoffSpec(1, targetWordCount)];
   const lastSpec = specs[specs.length - 1];
   if (lastSpec.title.toUpperCase().includes('HANDOFF')) return specs;
-  return [
-    ...specs,
-    {
-      number: lastSpec.number + 1,
-      title: 'HANDOFF_OPERATIVO',
-      focus_instructions: 'Scrivi SOLO il JSON HANDOFF_OPERATIVO strutturato con tutti i campi richiesti. Nient\'altro.',
-      required_data_points: ['tutte le decisioni strategiche', 'roadmap', 'messaggi chiave', 'test immediati'],
-      target_word_count: targetWordCount,
-      ledger_sections: ['all'],
-    },
-  ];
+  return [...specs, buildHandoffSpec(lastSpec.number + 1, targetWordCount)];
 }
 
 export function buildArchitectPrompt(params: {

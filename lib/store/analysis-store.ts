@@ -148,15 +148,16 @@ export const useAnalysisStore = create<AnalysisStore>()(
           analyses: state.analyses.map((a) => {
             if (a.id !== id) return a;
             const existing = a.chapters?.[number];
-            const updated: ChapterEntry = {
-              title: patch.title ?? existing?.title ?? `Cap ${number}`,
-              text: patch.text ?? existing?.text ?? '',
-              wordCount: patch.wordCount ?? existing?.wordCount ?? 0,
-              status: patch.status ?? existing?.status ?? 'pending',
-            };
+            const title      = patch.title      ?? existing?.title      ?? `Cap ${number}`;
+            const text       = patch.text       ?? existing?.text       ?? '';
+            const wordCount  = patch.wordCount  ?? existing?.wordCount  ?? 0;
+            const status     = patch.status     ?? existing?.status     ?? 'pending';
+            if (existing && existing.title === title && existing.text === text && existing.wordCount === wordCount && existing.status === status) {
+              return a;
+            }
             return {
               ...a,
-              chapters: { ...(a.chapters || {}), [number]: updated },
+              chapters: { ...(a.chapters || {}), [number]: { title, text, wordCount, status } },
               updatedAt: new Date().toISOString(),
             };
           }),
@@ -165,9 +166,11 @@ export const useAnalysisStore = create<AnalysisStore>()(
 
       setCost: (id, cost) => {
         set((state) => ({
-          analyses: state.analyses.map((a) =>
-            a.id === id ? { ...a, cost, updatedAt: new Date().toISOString() } : a
-          ),
+          analyses: state.analyses.map((a) => {
+            if (a.id !== id) return a;
+            if (a.cost && a.cost.totalUsd === cost.totalUsd && a.cost.tokens === cost.tokens) return a;
+            return { ...a, cost, updatedAt: new Date().toISOString() };
+          }),
         }));
       },
 
