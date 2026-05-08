@@ -1,0 +1,29 @@
+[
+  {
+    "id": "retail_kpi_quartet",
+    "name": "Retail KPI Quartet",
+    "category": "vertical",
+    "sectors": ["retail"],
+    "use_cases": ["store performance", "merchandising", "operations"],
+    "applicable_chapters": ["economics_pricing", "kpi"],
+    "prompt_block": "## RETAIL KPI QUARTET\n\n1. **Sales per square meter** (€/mq/anno) — efficienza spazio\n2. **Conversion rate** (% visitatori → acquirenti)\n3. **Average Transaction Value (ATV)** — scontrino medio\n4. **Items per Transaction (IPT)** — cross-sell efficacia\n\nBenchmark Italia (ISTAT/Confcommercio): retail food 5-8k €/mq, abbigliamento 3-6k €/mq, lusso 10-30k €/mq.\n\nPer il cliente: estrai KPI attuali, confronta con benchmark settoriale, identifica leva principale (spazio, traffico, conversione, scontrino) con piano d'azione 90gg."
+  },
+  {
+    "id": "omnichannel_maturity",
+    "name": "Omnichannel Maturity Ladder",
+    "category": "vertical",
+    "sectors": ["retail", "ecommerce"],
+    "use_cases": ["digital retail", "channel strategy"],
+    "applicable_chapters": ["strategy", "go_to_market"],
+    "prompt_block": "## OMNICHANNEL MATURITY (5 stadi)\n\n1. **Single channel**: solo fisico o solo online\n2. **Multi-channel**: canali separati, no integrazione\n3. **Cross-channel**: alcuni dati condivisi (es. anagrafica)\n4. **Omnichannel**: customer journey unificato (BOPIS, ROPIS, ship-from-store)\n5. **Unified commerce**: stack tech unico, real-time inventory cross-channel\n\nPer il cliente: stadio attuale, gap critico, investimento per saltare 1 livello (POS, OMS, CDP). Vietato 'omnichannel' come buzzword senza misurazione."
+  },
+  {
+    "id": "rfm_segmentation",
+    "name": "RFM Segmentation (Recency-Frequency-Monetary)",
+    "category": "vertical",
+    "sectors": ["retail", "ecommerce", "services"],
+    "use_cases": ["customer segmentation", "loyalty", "CRM"],
+    "applicable_chapters": ["buyer_persona", "strategy"],
+    "prompt_block": "## RFM SEGMENTATION\n\nSegmenta clienti su 3 dimensioni:\n- **Recency**: giorni dall'ultimo acquisto (basso = meglio)\n- **Frequency**: numero acquisti / periodo\n- **Monetary**: spesa totale\n\n11 segmenti standard: Champions, Loyal, Potential Loyalists, New, Promising, Need Attention, About to Sleep, At Risk, Cannot Lose, Hibernating, Lost.\n\nPer il cliente: stima distribuzione % clienti per segmento + azione marketing specifica per i 3 segmenti più valuabili (Champions: VIP program; At Risk: win-back; Cannot Lose: high-touch sales)."
+  }
+]

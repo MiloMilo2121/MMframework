@@ -1,0 +1,29 @@
+[
+  {
+    "id": "abm_framework",
+    "name": "Account-Based Marketing (ABM)",
+    "category": "vertical",
+    "sectors": ["b2b_services", "saas", "industrial"],
+    "use_cases": ["enterprise sales", "go-to-market", "account expansion"],
+    "applicable_chapters": ["go_to_market", "strategy"],
+    "prompt_block": "## ABM — 3 LIVELLI (ITSMA)\n\n1. **Strategic ABM (1:1)**: 5-50 account, deal > €500k, custom content\n2. **ABM Lite (1:few)**: 50-500 account in cluster simili (settore, taglia)\n3. **Programmatic ABM (1:many)**: tech-enabled, > 500 account\n\nPer ogni livello:\n- Target Account List (TAL) con criteri quantitativi\n- Account team composition (AE, SDR, marketer, SE)\n- Engagement plays (intent data, eventi, gifting, content)\n- Metrics: account engagement score, pipeline coverage 4x, win rate target 25%+\n\nVietato 'fare ABM' senza specificare quale livello + TAL definita."
+  },
+  {
+    "id": "professional_services_economics",
+    "name": "Professional Services Economics",
+    "category": "vertical",
+    "sectors": ["b2b_services", "consulting"],
+    "use_cases": ["utilization", "margin", "pricing"],
+    "applicable_chapters": ["economics_pricing", "operations"],
+    "prompt_block": "## PROFESSIONAL SERVICES — Economics chiave\n\n1. **Utilization Rate** = Hours billable / Hours available (target 70-85% senior, 65-75% junior)\n2. **Realization Rate** = € fatturato / € a tariffa standard (target > 90%)\n3. **Pyramid Ratio** = senior:mid:junior (es. 1:3:6 efficiente, 1:1:1 inefficiente)\n4. **Bench Cost** = stipendi non-billable / total revenue (< 15% accettabile)\n5. **Revenue per FTE** (benchmark consulting Italia: €120k-200k)\n\nPer il cliente: analizza ogni KPI, identifica leva critica (più spesso: ottimizzazione mix piramide o aumento tariffe per nicchia)."
+  },
+  {
+    "id": "challenger_sale",
+    "name": "Challenger Sale Methodology",
+    "category": "vertical",
+    "sectors": ["b2b_services", "saas", "industrial"],
+    "use_cases": ["sales methodology", "complex deals"],
+    "applicable_chapters": ["go_to_market"],
+    "prompt_block": "## CHALLENGER SALE (CEB/Gartner)\n\n5 profili venditori — solo 1 vince in deal complessi:\n1. **Hard Worker** (21%) — più attività\n2. **Lone Wolf** (17%) — istinto\n3. **Relationship Builder** (7%) — peggior performer in B2B complesso\n4. **Reactive Problem Solver** (14%)\n5. **Challenger** (39% top performer) — Teach, Tailor, Take Control\n\n**Commercial Insight**: il Challenger insegna al cliente qualcosa di nuovo SUL SUO BUSINESS, non sul prodotto.\n\nPer il cliente: valuta il sales playbook attuale. Vende prodotto o vende insight? Indica 3 'commercial insights' specifici al settore del target."
+  }
+]

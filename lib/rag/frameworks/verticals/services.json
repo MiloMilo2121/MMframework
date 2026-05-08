@@ -1,0 +1,20 @@
+[
+  {
+    "id": "service_blueprint",
+    "name": "Service Blueprint",
+    "category": "vertical",
+    "sectors": ["services", "b2b_services", "healthcare"],
+    "use_cases": ["service design", "operations", "customer experience"],
+    "applicable_chapters": ["operations", "product_tech"],
+    "prompt_block": "## SERVICE BLUEPRINT (Shostack)\n\n5 livelli orizzontali per ogni step del servizio:\n1. **Customer Actions**: cosa fa il cliente\n2. **Frontstage**: contatti diretti (persone, touchpoint)\n3. **Backstage**: azioni dipendenti non visibili\n4. **Support Processes**: sistemi IT, partner\n5. **Physical Evidence**: artefatti tangibili (mail, app, ricevuta)\n\nLine of interaction (cliente↔frontstage), Line of visibility (frontstage↔backstage).\n\nPer il cliente: blueprint di 1 servizio chiave, identifica 'fail points' (dove il servizio rompe più spesso) + 'wait points' (dove l'utente aspetta) con contromisura."
+  },
+  {
+    "id": "servqual",
+    "name": "SERVQUAL — 5 dimensioni qualità servizio",
+    "category": "vertical",
+    "sectors": ["services", "healthcare", "hospitality"],
+    "use_cases": ["service quality", "customer satisfaction"],
+    "applicable_chapters": ["product_tech", "strategy"],
+    "prompt_block": "## SERVQUAL (Parasuraman)\n\n5 dimensioni della qualità percepita:\n1. **Reliability**: erogare il servizio promesso, accuratamente\n2. **Assurance**: competenza + cortesia che ispirano fiducia\n3. **Tangibles**: facilities, attrezzature, materiali\n4. **Empathy**: attenzione individuale al cliente\n5. **Responsiveness**: prontezza nell'aiutare\n\nGap Model: Expectations - Perceptions = SERVQUAL gap.\n\nPer il cliente: estrai NPS/CSAT + analisi review (Trustpilot, Google) per identificare la dimensione più gappata + 1-2 azioni specifiche."
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "lean_manufacturing",
+    "name": "Lean Manufacturing — 7 Sprechi (Muda)",
+    "category": "vertical",
+    "sectors": ["manufacturing", "industrial"],
+    "use_cases": ["operations", "cost reduction", "process optimization"],
+    "applicable_chapters": ["operations", "economics_pricing"],
+    "prompt_block": "## LEAN — 7 SPRECHI (Toyota / Womack)\n\n1. **Sovrapproduzione** — produrre più di quanto serva ora\n2. **Attesa** — code, idle time macchine/persone\n3. **Trasporto** — movimentazione non value-added\n4. **Sovra-processamento** — qualità sopra requisito cliente\n5. **Inventario** — stock WIP, finiti, materie prime\n6. **Movimento** — micro-movimenti operatori\n7. **Difetti** — rework, scarti\n\n(8°: talento non utilizzato).\n\nPer il cliente: identifica i 2-3 sprechi DOMINANTI con stima impatto (€/anno) e contromisura (Kanban, SMED, Poka-Yoke, 5S). Vietato consiglio 'fare lean' senza specificare quale sprechio."
+  },
+  {
+    "id": "oee",
+    "name": "Overall Equipment Effectiveness (OEE)",
+    "category": "vertical",
+    "sectors": ["manufacturing", "industrial"],
+    "use_cases": ["productivity", "asset utilization", "industry 4.0"],
+    "applicable_chapters": ["operations", "kpi"],
+    "prompt_block": "## OEE — Overall Equipment Effectiveness\n\n**OEE = Availability × Performance × Quality**\n\nBenchmark:\n- World-class: ≥ 85%\n- Tipico: 60%\n- Sotto 40%: opportunità di doubling produzione senza CAPEX\n\nDecomposizione perdite (TPM Six Big Losses):\n1. Breakdown\n2. Setup/Adjustment\n3. Idling/Minor stops\n4. Reduced speed\n5. Defects in process\n6. Reduced yield\n\nPer il cliente: stima OEE attuale + identifica 1-2 perdite dominanti + roadmap di miglioramento (target +15% in 12 mesi tipico)."
+  },
+  {
+    "id": "industry_40_maturity",
+    "name": "Industry 4.0 Maturity Model (Acatech)",
+    "category": "vertical",
+    "sectors": ["manufacturing", "industrial"],
+    "use_cases": ["digital transformation", "tech roadmap"],
+    "applicable_chapters": ["product_tech", "strategy"],
+    "prompt_block": "## INDUSTRY 4.0 MATURITY (6 stadi Acatech)\n\n1. **Computerization**: macchine isolate digitalizzate\n2. **Connectivity**: sistemi connessi (IoT base)\n3. **Visibility**: digital twin, real-time data\n4. **Transparency**: capacità di interpretare il dato (analytics)\n5. **Predictive Capacity**: forecasting (AI/ML predictive maintenance)\n6. **Adaptability**: sistema autoregolante\n\nPer il cliente: posiziona stadio attuale + indica sforzo per saltare 1 livello (CAPEX/OPEX, talenti, integrazioni). Vietato saltare > 2 stadi (rischio fallimento)."
+  },
+  {
+    "id": "supply_chain_risk",
+    "name": "Supply Chain Risk Matrix",
+    "category": "vertical",
+    "sectors": ["manufacturing", "retail", "industrial"],
+    "use_cases": ["resilience", "risk management"],
+    "applicable_chapters": ["operations", "strategy"],
+    "prompt_block": "## SUPPLY CHAIN RISK MATRIX\n\nMappa fornitori critici su 2 assi:\n- **Spend impact** (% costo prodotto)\n- **Supply risk** (single source, geo concentration, regulatory)\n\n4 quadranti (Kraljic):\n- **Strategic** (high/high): partnership long-term, dual-source\n- **Leverage** (high/low): negozia hard, gare\n- **Bottleneck** (low/high): prevenzione, stock buffer\n- **Routine** (low/low): standardizza, automatizza purchase\n\nPer il cliente: identifica top-5 fornitori per spend, quadrante di ognuno, azione 30/60/90gg per i critical."
+  }
+]

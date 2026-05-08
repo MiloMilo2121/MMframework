@@ -1,0 +1,38 @@
+[
+  {
+    "id": "saas_metrics_quartet",
+    "name": "SaaS Metrics Quartet (LTV/CAC/Payback/NRR)",
+    "category": "vertical",
+    "sectors": ["saas", "software"],
+    "use_cases": ["unit economics", "fundability", "growth efficiency"],
+    "applicable_chapters": ["economics_pricing", "kpi"],
+    "prompt_block": "## SAAS METRICS QUARTET\n\nObbligatori per ogni analisi SaaS:\n1. **LTV/CAC** > 3x (sotto: insostenibile; sopra 5x: probabile under-investment in growth)\n2. **CAC Payback** < 12 mesi B2C, < 18 mesi B2B (sopra 24 mesi: rivedi unit economics)\n3. **Net Revenue Retention (NRR)** > 110% (best-in-class > 130%)\n4. **Gross Margin** > 70% (commodity SaaS sotto 60% non scala)\n\nPer il cliente: estrai/stima ogni KPI con confidence (high/medium/low) + benchmark settoriale (cita fonte: KeyBanc, OpenView, ChartMogul). Flagga gap > 30% vs benchmark."
+  },
+  {
+    "id": "product_led_growth",
+    "name": "Product-Led Growth (PLG) Loop",
+    "category": "vertical",
+    "sectors": ["saas", "software", "ecommerce"],
+    "use_cases": ["growth strategy", "go-to-market", "viral mechanics"],
+    "applicable_chapters": ["strategy", "go_to_market"],
+    "prompt_block": "## PRODUCT-LED GROWTH (PLG) — 5 condizioni\n\nIl PLG funziona SOLO se:\n1. **Time-to-value** < 10 minuti (utente vede valore senza onboarding sales)\n2. **Self-serve onboarding** completo (zero touch human)\n3. **Activation event** misurabile e correlato a retention 30d\n4. **Viral/referral loop** integrato nel prodotto (non bolt-on)\n5. **Expansion revenue** dentro l'account (PQL: Product Qualified Lead)\n\nValuta ogni condizione per il cliente. Se < 3/5 condizioni rispettate: PLG NON è la strategia giusta, suggerisci sales-led o hybrid."
+  },
+  {
+    "id": "rule_of_40",
+    "name": "Rule of 40 (Bessemer)",
+    "category": "vertical",
+    "sectors": ["saas", "software"],
+    "use_cases": ["growth-profitability balance", "valuation"],
+    "applicable_chapters": ["economics_pricing", "strategy"],
+    "prompt_block": "## RULE OF 40\n\n**Growth Rate (% YoY ARR) + Profit Margin (FCF % / EBITDA margin) ≥ 40%**\n\nInterpretazione:\n- ≥ 40%: top-quartile, growth efficiente\n- 20-40%: zona accettabile, monitorare trade-off\n- < 20%: stallo, rivedi pricing o cost structure\n\nNon valido per: pre-revenue, < $5M ARR (troppa varianza), settori non-SaaS.\n\nApplica al cliente: calcola/stima e confronta con peer pubblici (Salesforce, HubSpot, Atlassian). Indica leve specifiche per migliorare la metrica più debole."
+  },
+  {
+    "id": "saas_pricing_models",
+    "name": "SaaS Pricing Models (5 archetipi)",
+    "category": "vertical",
+    "sectors": ["saas", "software"],
+    "use_cases": ["pricing strategy", "monetization", "packaging"],
+    "applicable_chapters": ["economics_pricing"],
+    "prompt_block": "## SAAS PRICING — 5 ARCHETIPI\n\n1. **Per-seat**: scala con team (Slack, Atlassian). Pro: prevedibile. Contro: penalizza adoption.\n2. **Per-usage**: API call, GB, transactions (Twilio, Stripe). Pro: align value. Contro: bill shock.\n3. **Tiered/Feature-based**: Free/Pro/Enterprise (HubSpot). Pro: upsell path. Contro: feature negotiation.\n4. **Outcome-based**: paghi per risultato (es. % deal chiuso). Raro ma high-margin.\n5. **Hybrid platform**: base fee + usage (Snowflake). Best-in-class per data infra.\n\nPer il cliente: analizza pricing attuale, confronta con i 5 archetipi, raccomanda transizione (con steps di rollout, rischio churn, comunicazione)."
+  }
+]

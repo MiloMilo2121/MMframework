@@ -1,0 +1,29 @@
+[
+  {
+    "id": "ecommerce_funnel",
+    "name": "E-commerce Conversion Funnel",
+    "category": "vertical",
+    "sectors": ["ecommerce", "retail"],
+    "use_cases": ["conversion optimization", "user journey"],
+    "applicable_chapters": ["go_to_market", "kpi"],
+    "prompt_block": "## E-COMMERCE FUNNEL — 5 STADI con benchmark\n\n1. **Visit → Product View**: 40-60%\n2. **Product View → Add to Cart**: 7-12%\n3. **Add to Cart → Checkout Start**: 60-70%\n4. **Checkout Start → Purchase**: 50-70% (cart abandonment 30-50%)\n5. **First Purchase → Repeat 30d**: 15-30%\n\nConversion rate complessivo: 2-3% (good), 4%+ (great).\n\nPer il cliente: estrai conversion rate per stadio, identifica drop-off dominante, leva specifica (page speed, trust badge, checkout 1-step, abandoned cart email)."
+  },
+  {
+    "id": "cohort_retention",
+    "name": "Cohort Retention Analysis",
+    "category": "vertical",
+    "sectors": ["ecommerce", "saas", "consumer_apps"],
+    "use_cases": ["retention", "cohort behavior"],
+    "applicable_chapters": ["kpi", "strategy"],
+    "prompt_block": "## COHORT RETENTION ANALYSIS\n\nNon guardare solo retention aggregata. Segmenta per coorte (es. mese di acquisto).\n\n3 patterns:\n- **Smile curve**: drop iniziale + recupero (network effects, viral) — best\n- **Decay flat**: drop poi stabile (commodity SaaS)\n- **Cliff**: drop catastrofico — broken product\n\nMetric chiave: % attivi al month 6 / month 1.\nBenchmark: > 40% (eccellente), 20-40% (buono), < 20% (allarme).\n\nPer il cliente: ricostruisci cohort 12 mesi, identifica pattern, isolare le coorti high-retention e capire cosa hanno in comune (canale acquisizione, segmento, prodotto)."
+  },
+  {
+    "id": "ltv_cohort_model",
+    "name": "LTV by Acquisition Channel",
+    "category": "vertical",
+    "sectors": ["ecommerce", "saas", "consumer_apps"],
+    "use_cases": ["channel allocation", "marketing spend"],
+    "applicable_chapters": ["go_to_market", "economics_pricing"],
+    "prompt_block": "## LTV PER CANALE — non LTV medio\n\nLTV aggregato = inutile. Calcola LTV PER CANALE di acquisizione:\n- Organic vs Paid Search vs Social vs Affiliate vs Direct\n\nFormula: LTV = (Avg Order Value × Frequency × Margin) × Lifespan.\n\nPer ogni canale:\n- CAC channel-specific\n- LTV channel-specific\n- LTV/CAC ratio (target > 3x)\n- Payback months\n\nDecisione allocazione: spostare budget verso canali con LTV/CAC > 3x e payback < 12 mesi. Vietato 'aumentare adv' senza specificare canale e ROI atteso."
+  }
+]

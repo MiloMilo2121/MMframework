@@ -1,0 +1,74 @@
+[
+  {
+    "id": "porter_five_forces",
+    "name": "Porter's Five Forces",
+    "category": "universal",
+    "sectors": ["*"],
+    "use_cases": ["competitive analysis", "market structure", "industry attractiveness"],
+    "applicable_chapters": ["competitor_intelligence", "market_dynamics"],
+    "prompt_block": "## PORTER'S FIVE FORCES (lente di analisi)\nApplica letteralmente queste 5 forze, NON in astratto:\n1. **Rivalità competitiva**: numero competitor, concentrazione (HHI), differenziazione, switching costs concreti.\n2. **Potere fornitori**: pochi vs molti, costo cambio, integrazione verticale possibile, % del costo totale.\n3. **Potere clienti**: concentrazione, sensibilità prezzo, switching cost, alternative dirette.\n4. **Minaccia nuovi entranti**: barriere capitale, regolamentari, brand, scale economy, network effect.\n5. **Minaccia sostituti**: prodotti alternativi (anche cross-category), trade-off prezzo/performance.\n\nPer ogni forza: rating LOW/MEDIUM/HIGH + 2 evidenze numeriche o citate dal ledger.\nVietato: 'media', 'rilevante', 'significativo'. Solo numeri o quote reali."
+  },
+  {
+    "id": "jtbd",
+    "name": "Jobs To Be Done",
+    "category": "universal",
+    "sectors": ["*"],
+    "use_cases": ["customer needs", "segmentation", "value proposition"],
+    "applicable_chapters": ["buyer_persona", "product_tech", "strategy"],
+    "prompt_block": "## JOBS-TO-BE-DONE (Christensen)\nNON descrivere demografia. Descrivi PROGRESSI che il cliente vuole fare.\n\nFormat per ogni job:\n- **Functional Job**: 'Quando [situazione], voglio [motivazione], così posso [outcome]'\n- **Emotional Job**: come si vuole sentire (es. 'rassicurato che la decisione sia difendibile')\n- **Social Job**: come vuole essere percepito (es. 'innovatore prudente')\n- **Hire/Fire criteria**: cosa fa scegliere o abbandonare la soluzione\n\nVerifica nel ledger: trova quote reali da review/interviste. Senza quote → flag NON_VERIFICATO."
+  },
+  {
+    "id": "ansoff_matrix",
+    "name": "Ansoff Growth Matrix",
+    "category": "universal",
+    "sectors": ["*"],
+    "use_cases": ["growth strategy", "product-market expansion"],
+    "applicable_chapters": ["strategy", "roadmap"],
+    "prompt_block": "## ANSOFF MATRIX (4 quadranti, non come slide)\n\n| | Mercati esistenti | Mercati nuovi |\n|---|---|---|\n| Prodotti esistenti | **Penetration**: tattiche concrete (pricing, promo, channel) | **Market Development**: settori/geo specifici nominati |\n| Prodotti nuovi | **Product Development**: feature/SKU specifici | **Diversification**: ATTENZIONE — solo se asset esistenti rilevanti |\n\nPer il cliente in oggetto:\n1. Indica quale quadrante è prioritario nei prossimi 12 mesi\n2. Per ogni opzione: stima sforzo (€/persone), rischio, time-to-revenue\n3. Vieta consigli generici tipo 'espandersi in nuovi mercati' senza nome specifico"
+  },
+  {
+    "id": "bcg_matrix",
+    "name": "BCG Growth-Share Matrix",
+    "category": "universal",
+    "sectors": ["*"],
+    "use_cases": ["portfolio analysis", "resource allocation"],
+    "applicable_chapters": ["product_tech", "economics_pricing"],
+    "prompt_block": "## BCG MATRIX (per portfolio analysis)\n\n2 assi: Market Growth (Y) × Relative Market Share (X).\n\n4 quadranti:\n- **Star** (high growth, high share): investi, futuro core\n- **Cash Cow** (low growth, high share): mungi, finanzia altro\n- **Question Mark** (high growth, low share): scelta brutale (push o cut)\n- **Dog** (low growth, low share): liquida o riposiziona\n\nPer ogni linea/SKU del cliente: posizionalo + indica strategia operativa con KPI concreto (es. 'Star X: aumenta R&D del 20%, target ARR +30%')."
+  },
+  {
+    "id": "blue_ocean",
+    "name": "Blue Ocean Strategy (Kim & Mauborgne)",
+    "category": "universal",
+    "sectors": ["*"],
+    "use_cases": ["differentiation", "uncontested market", "value innovation"],
+    "applicable_chapters": ["strategy", "competitor_intelligence"],
+    "prompt_block": "## BLUE OCEAN — ERRC Grid (Eliminate-Reduce-Raise-Create)\n\nPer rompere il trade-off costo/differenziazione:\n- **ELIMINATE**: quali fattori dati per scontati nel settore vanno tagliati?\n- **REDUCE**: quali abbassare sotto lo standard?\n- **RAISE**: quali alzare ben sopra lo standard?\n- **CREATE**: quali fattori nuovi mai offerti?\n\nOutput obbligatorio: per il cliente, almeno 1 elemento per ogni quadrante con prova nel ledger.\n\nValue Curve: descrivi come la curva del cliente DEVE divergere da quella del leader di settore."
+  },
+  {
+    "id": "value_chain",
+    "name": "Porter's Value Chain",
+    "category": "universal",
+    "sectors": ["*"],
+    "use_cases": ["operational analysis", "cost optimization", "differentiation source"],
+    "applicable_chapters": ["product_tech", "operations"],
+    "prompt_block": "## VALUE CHAIN (Porter)\n\nAttività primarie: Inbound Logistics → Operations → Outbound Logistics → Marketing & Sales → Service\nAttività di supporto: Infrastruttura, HR, Tecnologia, Procurement\n\nPer ogni attività primaria del cliente:\n1. Costo relativo (% sul totale, anche stimato)\n2. Differenziazione potenziale (LOW/MEDIUM/HIGH) con prova\n3. Linkage critico con altre attività\n\nIdentifica 1-2 attività con MAGGIOR leverage (basso costo relativo, alta differenziazione)."
+  },
+  {
+    "id": "north_star_framework",
+    "name": "North Star Framework (Amplitude)",
+    "category": "universal",
+    "sectors": ["*"],
+    "use_cases": ["product strategy", "metrics design", "team alignment"],
+    "applicable_chapters": ["strategy", "kpi"],
+    "prompt_block": "## NORTH STAR FRAMEWORK\n\n1. **North Star Metric (NSM)**: una sola metrica che lega valore al cliente con valore al business. NON revenue diretta. Esempi: 'minuti di video consumati', 'conversazioni terminate con successo'.\n\n2. **Input Metrics** (3-5): leve operative che muovono la NSM, ognuna actionable da un team specifico.\n\n3. **Counter-metrics**: cosa monitorare per evitare di gameificare la NSM (es. churn se NSM = sign-up).\n\nPer il cliente: proponi NSM specifica al business model + 3-5 input metrics + 1-2 counter-metrics. Vietato 'engagement', 'awareness' senza definizione operativa."
+  },
+  {
+    "id": "wardley_mapping",
+    "name": "Wardley Mapping",
+    "category": "universal",
+    "sectors": ["*"],
+    "use_cases": ["strategy visualization", "evolution analysis", "build vs buy"],
+    "applicable_chapters": ["strategy", "product_tech"],
+    "prompt_block": "## WARDLEY MAPPING (evoluzione componenti)\n\nDue assi: Value Chain (Y, dal user-need al lower-level component) × Evolution (X: Genesis → Custom → Product → Commodity).\n\nPer il cliente:\n1. Identifica 5-8 componenti chiave della value chain\n2. Posizionali sull'asse Evolution (con evidenza: standardizzazione, presenza di vendor commodity)\n3. Indica componenti in transizione (es. da Custom a Product) — qui lo sforzo deve calare\n4. Indica componenti Genesis (R&D protetto) — qui investire\n\nDecisione build/buy: NON costruire componenti già Commodity (es. autenticazione, billing). Costruire solo Genesis/Custom rilevanti."
+  }
+]
