@@ -29,6 +29,8 @@ import {
 } from '@/lib/ai/prompts/step2-workers';
 import { writeChaptersBatched } from '@/lib/ai/ghostwriter';
 import { runBoardroomPipeline, pickInnovationCriticalChapters, isBoardroomEnabled } from '@/lib/agents/boardroom-orchestrator';
+import { runFinalCoherencePass, computeInnovationScore } from '@/lib/agents/quality-pass';
+import { SSE_EVENT } from '@/lib/ai/sse-events';
 import {
   type ChapterSpec,
   buildArchitectPrompt,
@@ -302,6 +304,7 @@ export async function POST(req: NextRequest) {
         };
 
         let chapterTexts: string[];
+        let boardroomBlackboard: import('@/lib/agents/blackboard').Blackboard | null = null;
 
         if (isBoardroomEnabled()) {
           send('status', {
@@ -326,6 +329,7 @@ export async function POST(req: NextRequest) {
             shouldStop,
           });
           chapterTexts = pipelineResult.chapterTexts;
+          boardroomBlackboard = pipelineResult.blackboard;
           // Legacy events emitted for UI compatibility
           chapterTexts.forEach((text, idx) => {
             const spec = chapterSpecs[idx];
@@ -396,6 +400,42 @@ export async function POST(req: NextRequest) {
         const chaptersFound = chapterTexts.filter((t) => t && !t.startsWith('[Capitolo non generato')).length;
         const contextBridge = extractContextBridge(fullText);
 
+        // Final quality pass — only when boardroom is enabled (we have thesis/must_address)
+        let coherenceReport = null;
+        let innovationScore = null;
+        if (boardroomBlackboard?.strategy && !shouldStop()) {
+          send(SSE_EVENT.STATUS, {
+            phase: 'quality',
+            message: '🔍 Final coherence pass + innovation score...',
+            step: 'quality_pass',
+          });
+          innovationScore = computeInnovationScore(chapterTexts);
+          send(SSE_EVENT.INNOVATION_SCORE, innovationScore as unknown as Record<string, unknown>);
+          try {
+            const passResult = await runFinalCoherencePass({
+              clientName,
+              sector,
+              centralThesis: boardroomBlackboard.strategy.central_thesis,
+              mustAddress: boardroomBlackboard.strategy.must_address,
+              fullReport: fullText,
+              onCost: onCostUpdate,
+            });
+            coherenceReport = passResult.report;
+            if (passResult.parseError) {
+              send(SSE_EVENT.WARNING, {
+                message: `⚠️ Coherence pass parse error: ${passResult.parseError}`,
+                code: 'COHERENCE_PARSE_ERROR',
+              });
+            }
+            send(SSE_EVENT.COHERENCE_REPORT, coherenceReport as unknown as Record<string, unknown>);
+          } catch (err) {
+            send(SSE_EVENT.WARNING, {
+              message: `⚠️ Coherence pass failed: ${err instanceof Error ? err.message : 'unknown'}`,
+              code: 'COHERENCE_PASS_ERROR',
+            });
+          }
+        }
+
         const finalCost = costTracker.snapshot();
         send('cost_update', finalCost);
         send('complete', {
@@ -412,6 +452,8 @@ export async function POST(req: NextRequest) {
           cost: finalCost,
           tier,
           chapterSpecs,
+          coherenceReport,
+          innovationScore,
         });
 
       } catch (err) {

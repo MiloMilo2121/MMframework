@@ -27,6 +27,8 @@ export const SSE_EVENT = {
   REVISION_REQUESTED:     'revision_requested',
   CHAPTER_PROMOTED:       'chapter_promoted',
   AGENT_DIALOG:           'agent_dialog',
+  COHERENCE_REPORT:       'coherence_report',
+  INNOVATION_SCORE:       'innovation_score',
 } as const;
 
 export type SseEvent = typeof SSE_EVENT[keyof typeof SSE_EVENT];

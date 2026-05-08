@@ -9,10 +9,14 @@ import { StreamingProgress, type WorkerStatus } from '@/components/streaming/Str
 import { ChapterProgressGrid } from '@/components/streaming/ChapterProgressGrid';
 import { CostMeter } from '@/components/streaming/CostMeter';
 import { LiveReportPreview } from '@/components/streaming/LiveReportPreview';
+import { AgentDialogViewer } from '@/components/streaming/AgentDialogViewer';
 import { useAnalysisStore } from '@/lib/store/analysis-store';
 import type { HandoffOperativo } from '@/lib/types/handoff';
 import type { CostSnapshot } from '@/lib/types/analysis';
 import type { ChapterSpec } from '@/lib/ai/prompts/architect';
+import type { CritiqueRound, Severity, StrategyThesis } from '@/lib/agents/types';
+import { SEVERITY_RANK } from '@/lib/agents/types';
+import type { CoherenceReport, InnovationScore } from '@/lib/agents/quality-pass';
 import { TIER_CAP_USD_MAP } from '@/lib/ai/cost-tracker-client';
 import { SSE_EVENT } from '@/lib/ai/sse-events';
 import type { ChapterStatus } from '@/lib/ui/status';
@@ -44,6 +48,8 @@ export function Step5Research({ analysisId }: Props) {
   const {
     getById, updateStatus, setReportPart1, setReportPart2, setConclusions,
     updateAnalysis, setChapterSpecs, upsertChapter, setCost,
+    appendCritiqueRound, setStrategyThesis, setSelectedFrameworkIds,
+    setCoherenceReport, setInnovationScore,
   } = useAnalysisStore();
   const analysis = getById(analysisId);
   const effortTier = analysis?.effortTier ?? 2;
@@ -61,7 +67,36 @@ export function Step5Research({ analysisId }: Props) {
   // Derive chapter view state from store (single source of truth)
   const chapterSpecs = useMemo(() => analysis?.chapterSpecs ?? [], [analysis?.chapterSpecs]);
   const chaptersFromStore = useMemo(() => analysis?.chapters ?? {}, [analysis?.chapters]);
+  const critiqueRoundsByChapter = useMemo(() => analysis?.chapterCritiqueRounds ?? {}, [analysis?.chapterCritiqueRounds]);
   const cost = analysis?.cost ?? null;
+  const roundsMap = useMemo(() => {
+    const out: Record<number, number> = {};
+    for (const [num, rounds] of Object.entries(critiqueRoundsByChapter)) {
+      out[Number(num)] = rounds.length;
+    }
+    return out;
+  }, [critiqueRoundsByChapter]);
+  const severityMap = useMemo(() => {
+    const out: Record<number, Severity> = {};
+    for (const [num, rounds] of Object.entries(critiqueRoundsByChapter)) {
+      let max: Severity = 'none';
+      for (const r of rounds) {
+        for (const c of r.critiques) {
+          if (SEVERITY_RANK[c.severity] > SEVERITY_RANK[max]) max = c.severity;
+        }
+      }
+      out[Number(num)] = max;
+    }
+    return out;
+  }, [critiqueRoundsByChapter]);
+  const chapterTitlesMap = useMemo(() => {
+    const out: Record<number, string> = {};
+    for (const spec of chapterSpecs) out[spec.number] = spec.title;
+    return out;
+  }, [chapterSpecs]);
+  const hasCritiqueData = Object.keys(critiqueRoundsByChapter).length > 0;
+  const coherenceReport = analysis?.coherenceReport;
+  const innovationScore = analysis?.innovationScore;
   const statusMap = useMemo(() => {
     const map: Record<number, ChapterStatus> = {};
     for (const spec of chapterSpecs) {
@@ -208,7 +243,83 @@ export function Step5Research({ analysisId }: Props) {
     [SSE_EVENT.COST_EXCEEDED]: (data: Record<string, unknown>) => {
       addLog(`⛔ Budget superato: $${(data.totalUsd as number).toFixed(3)} / $${data.capUsd} — generazione interrotta`, 'warning');
     },
-  }), [analysisId, addLog, setChapterSpecs, upsertChapter, setCost, updateWorker]);
+
+    // Boardroom events
+    [SSE_EVENT.RAG_LOOKUP_COMPLETE]: (data: Record<string, unknown>) => {
+      const frameworks = Array.isArray(data.selectedFrameworks)
+        ? (data.selectedFrameworks as Array<{ id: string; name: string }>)
+        : [];
+      setSelectedFrameworkIds(analysisId, frameworks.map((f) => f.id));
+      addLog(`📚 ${frameworks.length} framework selezionati`);
+    },
+
+    [SSE_EVENT.STRATEGY_THESIS_READY]: (data: Record<string, unknown>) => {
+      const thesis: StrategyThesis = {
+        central_thesis: String(data.thesis ?? ''),
+        narrative_angle: String(data.angle ?? ''),
+        positioning_statement: String(data.positioning ?? ''),
+        selected_frameworks: Array.isArray(data.selectedFrameworks) ? (data.selectedFrameworks as string[]) : [],
+        contrarian_insights: Array.isArray(data.contrarianInsights) ? (data.contrarianInsights as string[]) : [],
+        must_address: [],
+        must_avoid: [],
+      };
+      setStrategyThesis(analysisId, thesis);
+      addLog(`🎯 Tesi: ${thesis.central_thesis.slice(0, 80)}...`);
+    },
+
+    [SSE_EVENT.OUTLINE_READY]: (data: Record<string, unknown>) => {
+      const num = typeof data.chapter === 'number' ? data.chapter : 0;
+      addLog(`📋 Outline CAP ${num} pronto (${data.subPointsCount ?? '?'} sub-points)`);
+    },
+
+    [SSE_EVENT.WRITER_DRAFT_READY]: (data: Record<string, unknown>) => {
+      const num = typeof data.chapter === 'number' ? data.chapter : 0;
+      const iter = typeof data.iteration === 'number' ? data.iteration : 1;
+      const wc = typeof data.wordCount === 'number' ? data.wordCount : 0;
+      setCurrentChapter(`CAP ${num} draft v${iter} (${wc} parole)`);
+    },
+
+    [SSE_EVENT.CHAIR_VERDICT]: (data: Record<string, unknown>) => {
+      const num = typeof data.chapter === 'number' ? data.chapter : 0;
+      const decision = String(data.decision ?? '');
+      const sev = String(data.severity ?? '');
+      const cnt = typeof data.critiqueCount === 'number' ? data.critiqueCount : 0;
+      addLog(`⚖️ CAP ${num} round ${data.iteration}: ${decision} (${sev}, ${cnt} critiche)`);
+    },
+
+    [SSE_EVENT.REVISION_REQUESTED]: (data: Record<string, unknown>) => {
+      const num = typeof data.chapter === 'number' ? data.chapter : 0;
+      const fix = typeof data.mustFixCount === 'number' ? data.mustFixCount : 0;
+      addLog(`🔁 CAP ${num} revisione richiesta (${fix} must-fix)`);
+    },
+
+    [SSE_EVENT.CHAPTER_PROMOTED]: (data: Record<string, unknown>) => {
+      const num = typeof data.chapter === 'number' ? data.chapter : 0;
+      const iter = typeof data.finalIteration === 'number' ? data.finalIteration : 1;
+      const forced = Boolean(data.forcedPromote);
+      addLog(`✅ CAP ${num} promosso (${iter} round${iter === 1 ? '' : 's'}${forced ? ', forced' : ''})`);
+    },
+
+    [SSE_EVENT.AGENT_DIALOG]: (data: Record<string, unknown>) => {
+      const num = typeof data.chapter === 'number' ? data.chapter : 0;
+      const rounds = Array.isArray(data.rounds) ? (data.rounds as CritiqueRound[]) : [];
+      for (const round of rounds) {
+        appendCritiqueRound(analysisId, num, round);
+      }
+    },
+
+    [SSE_EVENT.COHERENCE_REPORT]: (data: Record<string, unknown>) => {
+      const report = data as unknown as CoherenceReport;
+      setCoherenceReport(analysisId, report);
+      addLog(`🔍 Wow score: ${report.wow_score}/10 — ${report.thesis_consistency}`);
+    },
+
+    [SSE_EVENT.INNOVATION_SCORE]: (data: Record<string, unknown>) => {
+      const score = data as unknown as InnovationScore;
+      setInnovationScore(analysisId, score);
+      addLog(`✨ Innovation score: ${score.composite_score.toFixed(1)}/10`);
+    },
+  }), [analysisId, addLog, setChapterSpecs, upsertChapter, setCost, updateWorker, appendCritiqueRound, setStrategyThesis, setSelectedFrameworkIds, setCoherenceReport, setInnovationScore]);
 
   const handleRawEvent = useCallback((eventType: string, data: Record<string, unknown>) => {
     eventHandlers[eventType as keyof typeof eventHandlers]?.(data);
@@ -249,6 +360,42 @@ export function Step5Research({ analysisId }: Props) {
 
       {cost && isRunning && <CostMeter cost={cost} capUsd={capUsd} />}
 
+      {(coherenceReport || innovationScore) && (
+        <div
+          className="rounded-lg border p-3 flex flex-wrap items-center gap-4 text-sm"
+          style={{ borderColor: 'var(--border-brand)', backgroundColor: 'white' }}
+        >
+          {coherenceReport && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Wow score</span>
+              <span
+                className="text-lg font-bold"
+                style={{ color: coherenceReport.wow_score >= 7 ? '#16A34A' : coherenceReport.wow_score >= 5 ? '#F59E0B' : '#DC2626' }}
+              >
+                {coherenceReport.wow_score}/10
+              </span>
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                · {coherenceReport.thesis_consistency} · {coherenceReport.contradictions.length} contraddizioni
+              </span>
+            </div>
+          )}
+          {innovationScore && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Innovation</span>
+              <span
+                className="text-lg font-bold"
+                style={{ color: innovationScore.composite_score >= 7 ? '#16A34A' : innovationScore.composite_score >= 5 ? '#F59E0B' : '#DC2626' }}
+              >
+                {innovationScore.composite_score.toFixed(1)}/10
+              </span>
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                · {Math.round(innovationScore.counter_intuitive_density * 100)}% controintuitivo · {innovationScore.unique_source_domains} domini
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div className="space-y-4">
           <StreamingProgress
@@ -268,8 +415,19 @@ export function Step5Research({ analysisId }: Props) {
             <ChapterProgressGrid
               chapterSpecs={chapterSpecs}
               statusMap={statusMap}
+              roundsMap={roundsMap}
+              severityMap={severityMap}
               onCellClick={(num) => document.getElementById(`live-cap-${num}`)?.scrollIntoView({ behavior: 'smooth' })}
             />
+          )}
+
+          {hasCritiqueData && (
+            <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border-brand)', backgroundColor: 'var(--surface)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+                Dialogo agenti
+              </p>
+              <AgentDialogViewer rounds={critiqueRoundsByChapter} chapterTitles={chapterTitlesMap} />
+            </div>
           )}
 
           <div className="hidden">

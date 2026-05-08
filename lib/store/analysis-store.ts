@@ -5,6 +5,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Analysis, AnalysisStatus, ChapterEntry, CostSnapshot } from '@/lib/types/analysis';
 import type { HandoffData1, HandoffOperativo } from '@/lib/types/handoff';
 import type { ChapterSpec } from '@/lib/ai/prompts/architect';
+import type { CritiqueRound, StrategyThesis } from '@/lib/agents/types';
+import type { CoherenceReport, InnovationScore } from '@/lib/agents/quality-pass';
 
 interface AnalysisStore {
   analyses: Analysis[];
@@ -29,6 +31,11 @@ interface AnalysisStore {
   setChapterSpecs: (id: string, specs: ChapterSpec[]) => void;
   upsertChapter: (id: string, number: number, patch: Partial<ChapterEntry> & { title?: string }) => void;
   setCost: (id: string, cost: CostSnapshot) => void;
+  appendCritiqueRound: (id: string, chapterNumber: number, round: CritiqueRound) => void;
+  setStrategyThesis: (id: string, thesis: StrategyThesis) => void;
+  setSelectedFrameworkIds: (id: string, ids: string[]) => void;
+  setCoherenceReport: (id: string, report: CoherenceReport) => void;
+  setInnovationScore: (id: string, score: InnovationScore) => void;
   setActive: (id: string | null) => void;
   getActive: () => Analysis | null;
   getById: (id: string) => Analysis | undefined;
@@ -171,6 +178,53 @@ export const useAnalysisStore = create<AnalysisStore>()(
             if (a.cost && a.cost.totalUsd === cost.totalUsd && a.cost.tokens === cost.tokens) return a;
             return { ...a, cost, updatedAt: new Date().toISOString() };
           }),
+        }));
+      },
+
+      appendCritiqueRound: (id, chapterNumber, round) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) => {
+            if (a.id !== id) return a;
+            const existing = a.chapterCritiqueRounds?.[chapterNumber] ?? [];
+            const updated = [...existing.filter((r) => r.iteration !== round.iteration), round];
+            return {
+              ...a,
+              chapterCritiqueRounds: { ...(a.chapterCritiqueRounds || {}), [chapterNumber]: updated },
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }));
+      },
+
+      setStrategyThesis: (id, thesis) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) =>
+            a.id === id ? { ...a, strategyThesis: thesis, updatedAt: new Date().toISOString() } : a
+          ),
+        }));
+      },
+
+      setSelectedFrameworkIds: (id, ids) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) =>
+            a.id === id ? { ...a, selectedFrameworkIds: ids, updatedAt: new Date().toISOString() } : a
+          ),
+        }));
+      },
+
+      setCoherenceReport: (id, report) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) =>
+            a.id === id ? { ...a, coherenceReport: report, updatedAt: new Date().toISOString() } : a
+          ),
+        }));
+      },
+
+      setInnovationScore: (id, score) => {
+        set((state) => ({
+          analyses: state.analyses.map((a) =>
+            a.id === id ? { ...a, innovationScore: score, updatedAt: new Date().toISOString() } : a
+          ),
         }));
       },
 

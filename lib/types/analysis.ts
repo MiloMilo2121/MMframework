@@ -70,4 +70,10 @@ export interface Analysis {
   chapterSpecs?: import('../ai/prompts/architect').ChapterSpec[];
   chapters?: Record<number, ChapterEntry>;
   cost?: CostSnapshot;
+  // Boardroom (USE_BOARDROOM=true) — per-chapter critique audit trail
+  chapterCritiqueRounds?: Record<number, import('../agents/types').CritiqueRound[]>;
+  strategyThesis?: import('../agents/types').StrategyThesis;
+  selectedFrameworkIds?: string[];
+  coherenceReport?: import('../agents/quality-pass').CoherenceReport;
+  innovationScore?: import('../agents/quality-pass').InnovationScore;
 }
