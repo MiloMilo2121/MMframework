@@ -195,7 +195,7 @@ function buildChapterPrompt(
  * Extract the most relevant ledger sections for a given chapter.
  * Acts as a lightweight "RAG" without a vector DB.
  */
-function extractLedgerSlice(spec: ChapterSpec, ledger: ResearchLedger): string {
+export function extractLedgerSlice(spec: ChapterSpec, ledger: ResearchLedger): string {
   const parts: string[] = [];
 
   const sections = spec.ledger_sections || ['all'];

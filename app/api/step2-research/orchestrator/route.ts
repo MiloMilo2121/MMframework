@@ -28,6 +28,7 @@ import {
   buildChallengerUserPrompt,
 } from '@/lib/ai/prompts/step2-workers';
 import { writeChaptersBatched } from '@/lib/ai/ghostwriter';
+import { runBoardroomPipeline, pickInnovationCriticalChapters, isBoardroomEnabled } from '@/lib/agents/boardroom-orchestrator';
 import {
   type ChapterSpec,
   buildArchitectPrompt,
@@ -283,61 +284,97 @@ export async function POST(req: NextRequest) {
 
         const chapterStartTimes: Record<number, number> = {};
 
-        // Write chapters in parallel batches
-        const chapterTexts = await writeChaptersBatched(
-          chapterSpecs,
-          ledger,
-          coherenceModel,
-          {
-            onChapterStart: (spec) => {
-              chapterStartTimes[spec.number] = Date.now();
-              send('chapter_start', { number: spec.number, title: spec.title });
-              send('status', {
-                phase: 'ghostwriter',
-                message: `✍️ Scrivendo: CAP ${spec.number} — ${spec.title.slice(0, 50)}`,
-                step: 'writing',
-              });
-            },
-            onChapterComplete: (spec, text) => {
-              const durationMs = Date.now() - (chapterStartTimes[spec.number] ?? Date.now());
-              const wordCount = text.split(/\s+/).filter(Boolean).length;
-              send('chapter_complete', {
-                number: spec.number,
-                title: spec.title,
-                text,
-                wordCount,
-                durationMs,
-              });
-              // Legacy events for compatibility
-              send('chapter', { chapter: spec.title, number: spec.number });
-              send('chunk', { text: `## ${spec.title}\n\n${text}\n\n` });
-              const costSnap = costTracker.snapshot();
-              send('cost_update', costSnap);
-            },
-            onChapterError: (spec, error) => {
-              send('warning', {
-                message: `⚠️ Cap ${spec.number} fallito: ${error}`,
-                code: 'CHAPTER_ERROR',
-              });
-            },
-            onCost: (model, usage, phase) => {
-              trackCost(model, usage, phase);
-              const snap = costTracker.snapshot();
-              send('cost_update', snap);
-            },
-            shouldStop: () => {
-              if (costTracker.isOverBudget()) {
-                send('cost_exceeded', {
-                  totalUsd: costTracker.snapshot().totalUsd,
-                  capUsd: costTracker.capUsd(),
-                  message: `Budget Tier ${tier} ($${costTracker.capUsd()}) superato — generazione interrotta`,
-                });
-                return true;
-              }
-              return false;
-            },
+        const onCostUpdate = (model: string, usage: { prompt_tokens?: number; completion_tokens?: number } | null | undefined, phase: string) => {
+          trackCost(model, usage, phase);
+          const snap = costTracker.snapshot();
+          send('cost_update', snap);
+        };
+        const shouldStop = () => {
+          if (costTracker.isOverBudget()) {
+            send('cost_exceeded', {
+              totalUsd: costTracker.snapshot().totalUsd,
+              capUsd: costTracker.capUsd(),
+              message: `Budget Tier ${tier} ($${costTracker.capUsd()}) superato — generazione interrotta`,
+            });
+            return true;
           }
-        );
+          return false;
+        };
+
+        let chapterTexts: string[];
+
+        if (isBoardroomEnabled()) {
+          send('status', {
+            phase: 'boardroom',
+            message: '🏛️ Boardroom mode: Strategist + Outliner + critique loop',
+            step: 'boardroom_pipeline',
+          });
+          const innovationCritical = pickInnovationCriticalChapters(chapterSpecs);
+          const pipelineResult = await runBoardroomPipeline({
+            clientName,
+            sector,
+            geography,
+            ledger,
+            ledgerSummary,
+            handoffData1Excerpt: body.handoffData1 || '',
+            questionnaireExcerpt: body.questionnaire,
+            chapterSpecs,
+            maxIterations: Number(process.env.BOARDROOM_MAX_ITERATIONS) || 3,
+            innovationCriticalChapters: innovationCritical,
+            send,
+            onCost: onCostUpdate,
+            shouldStop,
+          });
+          chapterTexts = pipelineResult.chapterTexts;
+          // Legacy events emitted for UI compatibility
+          chapterTexts.forEach((text, idx) => {
+            const spec = chapterSpecs[idx];
+            if (!spec || !text) return;
+            send('chapter', { chapter: spec.title, number: spec.number });
+            send('chunk', { text: `## ${spec.title}\n\n${text}\n\n` });
+          });
+        } else {
+          // Legacy ghostwriter (parallel batches, no critique loop)
+          chapterTexts = await writeChaptersBatched(
+            chapterSpecs,
+            ledger,
+            coherenceModel,
+            {
+              onChapterStart: (spec) => {
+                chapterStartTimes[spec.number] = Date.now();
+                send('chapter_start', { number: spec.number, title: spec.title });
+                send('status', {
+                  phase: 'ghostwriter',
+                  message: `✍️ Scrivendo: CAP ${spec.number} — ${spec.title.slice(0, 50)}`,
+                  step: 'writing',
+                });
+              },
+              onChapterComplete: (spec, text) => {
+                const durationMs = Date.now() - (chapterStartTimes[spec.number] ?? Date.now());
+                const wordCount = text.split(/\s+/).filter(Boolean).length;
+                send('chapter_complete', {
+                  number: spec.number,
+                  title: spec.title,
+                  text,
+                  wordCount,
+                  durationMs,
+                });
+                send('chapter', { chapter: spec.title, number: spec.number });
+                send('chunk', { text: `## ${spec.title}\n\n${text}\n\n` });
+                const costSnap = costTracker.snapshot();
+                send('cost_update', costSnap);
+              },
+              onChapterError: (spec, error) => {
+                send('warning', {
+                  message: `⚠️ Cap ${spec.number} fallito: ${error}`,
+                  code: 'CHAPTER_ERROR',
+                });
+              },
+              onCost: onCostUpdate,
+              shouldStop,
+            }
+          );
+        }
 
         // Assemble full text
         let fullText = chapterTexts

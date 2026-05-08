@@ -16,6 +16,17 @@ export const SSE_EVENT = {
   COMPLETE:         'complete',
   ERROR:            'error',
   PING:             'ping',
+  // Boardroom events (USE_BOARDROOM=true)
+  RAG_LOOKUP_COMPLETE:    'rag_lookup_complete',
+  STRATEGY_THESIS_READY:  'strategy_thesis_ready',
+  OUTLINE_READY:          'outline_ready',
+  WRITER_DRAFT_READY:     'writer_draft_ready',
+  REVIEWER_STARTED:       'reviewer_started',
+  REVIEWER_COMPLETE:      'reviewer_complete',
+  CHAIR_VERDICT:          'chair_verdict',
+  REVISION_REQUESTED:     'revision_requested',
+  CHAPTER_PROMOTED:       'chapter_promoted',
+  AGENT_DIALOG:           'agent_dialog',
 } as const;
 
 export type SseEvent = typeof SSE_EVENT[keyof typeof SSE_EVENT];
