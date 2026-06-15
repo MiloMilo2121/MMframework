@@ -97,10 +97,11 @@ OPENROUTER_API_KEY=sk-or-...
 EXA_API_KEY=exa-...
 ANTHROPIC_API_KEY=sk-ant-...    # opzionale, fallback
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-STEP0_MODEL=anthropic/claude-3-5-haiku-20241022
+STEP0_MODEL=xiaomi/mimo-v2-pro
 STEP1_MODEL=anthropic/claude-opus-4-6
 STEP2_MODEL=anthropic/claude-opus-4-6
-STEP3_MODEL=anthropic/claude-3-5-haiku-20241022
+MINER_MODEL=deepseek/deepseek-r1
+STEP3_MODEL=anthropic/claude-sonnet-4-6
 STEP2_PROVIDER=Anthropic
 ```
 Nota: se claude-opus-4-6 non è ancora disponibile su OpenRouter, usa `anthropic/claude-opus-4-5`.
